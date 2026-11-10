@@ -1,0 +1,21 @@
+# Dependabot keeps NuGet dependencies up to date.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directories:
+      - "/XargonNET"
+      - "/XargonNET.Tests"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # SDL3-CS and SDL3-CS.Native must always be the same version, so update them together.
+      sdl3:
+        patterns:
+          - "SDL3-CS*"
+      # The test framework packages move together too.
+      testing:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
