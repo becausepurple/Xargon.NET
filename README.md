@@ -2,8 +2,6 @@
 
 A faithful port of **Xargon**, the 1993 DOS platform game, to .NET 10 and SDL3. All three episodes run from a single executable.
 
-The goal is fidelity: game logic, collision, timing (the 18.2 Hz BIOS clock the DOS game ran on), graphics and text are reproduced from the original source code rather than approximated.
-
 ## Credits and ownership
 
 **Xargon and everything that comes with it (the game, its graphics, levels, text, sound and music) is the intellectual property of Allen Pilgrim.** This project is an unofficial fan port.
