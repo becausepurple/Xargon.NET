@@ -1,6 +1,6 @@
 # Xargon.NET
 
-A faithful port of **Xargon**, the 1993 DOS platform game, to .NET 10 and SDL3. All three episodes run from a single executable.
+A port of **Xargon**, the 1993 DOS platform game, to .NET 10 and SDL3. All three episodes run from a single executable.
 
 ## Credits and ownership
 

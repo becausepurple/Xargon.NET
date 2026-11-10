@@ -1,6 +1,6 @@
 using XargonNET.Engine;
 
-Console.WriteLine("Xargon.NET — faithful port of the 1993 DOS game (all episodes, one executable).");
+Console.WriteLine("Xargon.NET — a port of the 1993 DOS game (all episodes, one executable).");
 
 if (args.Contains("--verify"))
     return AssetVerifier.Run();
