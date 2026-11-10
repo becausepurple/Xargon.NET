@@ -88,4 +88,4 @@ XargonNET.Tests/    unit and integration tests
 
 ## License
 
-No license has been chosen for the port's code yet. Xargon itself, including all game data, remains the property of Allen Pilgrim.
+No license has been chosen yet for the port's code. Xargon itself, including all game data, remains the property of Allen Pilgrim, and this port is derived from the source code he published under his own terms. See [NOTICE.md](NOTICE.md) for the ownership notice and those terms.
