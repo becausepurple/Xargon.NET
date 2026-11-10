@@ -1,0 +1,18 @@
+**/Assets/**
+**/bin/**
+**.png
+**/obj/**
+!XargonNET/Assets/*.cs
+.superpowers/
+
+# Proprietary game data must never be committed (extractor output, etc.)
+AssetExtractor/ExtractedAssets/
+*.XR0
+*.XR1
+*.XR2
+*.XR3
+*.XRH
+# Local working docs (plans/specs from the build process) are not part of the repo
+docs/superpowers/
+# AssetExtractor is excluded until it is repaired (it references types that no longer exist)
+AssetExtractor/
