@@ -43,6 +43,9 @@ if (args.Length > 0 && args[0] == "--player")
 if (args.Length > 0 && args[0] == "--mainmenu")
     return DebugDump.DumpMainMenu(args.Length > 1 ? int.Parse(args[1]) : 1, args.Length > 2 ? int.Parse(args[2]) : 0);
 
+if (args.Length > 0 && args[0] == "--menuframe")
+    return DebugDump.DumpMenuFrame(int.Parse(args[1]), args[2], int.Parse(args[3]), args.Contains("granny"), args.Contains("noise"));
+
 if (args.Length > 0 && args[0] == "--window")
     return DebugDump.DumpWindows(args.Length > 1 ? int.Parse(args[1]) : 1);
 

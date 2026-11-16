@@ -105,47 +105,66 @@ public sealed class GameApp : IDisposable
     {
         var menu = new Menu(MainMenuText, MainMenuKeys, 1, 8, 24, 11, 8, 24, 1);
         LoadBackdrop();
-        int sel = 0, frame = 0;
-        DrawMenuFrame(menu, sel, frame);
+        int sel = 0;
+        DrawMenuFrame(menu, sel, 0);
         FadeIn();
 
         while (_running && !_quit)
         {
-            char chosen = '\0';
+            char chosen = RunMenu(menu, 'E', ref sel,
+                draw: (s, f) => DrawMenuFrame(menu, s, f),
+                tick: () =>
+                {
+                    _objects.Gamecount++;
+                    _objects.UpdateObjects(_gameVp, touch: false); // animate backdrop (torches, water)
+                });
+            if (chosen == '\0') return; // window closed (quit latched)
+
+            if (!HandleMenuChoice(chosen)) return; // EXIT -> back to episode selector
+            LoadBackdrop();
+            DrawMenuFrame(menu, sel, 0);
+            FadeIn();
+        }
+    }
+
+    /// <summary>
+    /// The shared domenu loop (main menu now, game/buy menu later). Per tick: drain events (arrows
+    /// move the clamped selection, Return/Space/letters/Esc/F1 resolve via <see cref="Menu.ResolveKey"/>),
+    /// then <paramref name="tick"/> (backdrop animation) and <paramref name="draw"/>, present, wait.
+    /// Returns the chosen key, or '\0' when the window was closed (sets the quit flag).
+    /// </summary>
+    private char RunMenu(Menu menu, char escKey, ref int sel, Action<int, int> draw, Action? tick = null)
+    {
+        int frame = 0;
+        while (_running && !_quit)
+        {
             while (SDL.PollEvent(out SDL.Event e))
             {
-                if ((SDL.EventType)e.Type == SDL.EventType.Quit) { _quit = true; return; }
+                if ((SDL.EventType)e.Type == SDL.EventType.Quit) { _quit = true; return '\0'; }
                 if ((SDL.EventType)e.Type != SDL.EventType.KeyDown) continue;
-                switch (e.Key.Key)
+                char key = e.Key.Key switch
                 {
-                    case SDL.Keycode.Up: sel = (sel + menu.ItemCount - 1) % menu.ItemCount; break;
-                    case SDL.Keycode.Down: sel = (sel + 1) % menu.ItemCount; break;
-                    case SDL.Keycode.Return:
-                    case SDL.Keycode.Space: chosen = menu.Keytab[sel]; break;
-                    case SDL.Keycode.Escape: chosen = 'E'; break;
-                    default:
-                        char c = LetterKey(e.Key.Key);
-                        if (c != '\0' && menu.Keytab.IndexOf(c) >= 0) chosen = c;
-                        break;
-                }
-            }
-
-            if (chosen != '\0')
-            {
-                if (!HandleMenuChoice(chosen)) return; // EXIT -> back to episode selector
-                LoadBackdrop();
-                DrawMenuFrame(menu, sel, frame);
-                FadeIn();
-                continue;
+                    SDL.Keycode.Up => '\0',
+                    SDL.Keycode.Down => '\0',
+                    SDL.Keycode.Return => '\r',
+                    SDL.Keycode.Space => ' ',
+                    SDL.Keycode.Escape => Menu.KeyEsc,
+                    SDL.Keycode.F1 => Menu.KeyF1,
+                    _ => LetterKey(e.Key.Key),
+                };
+                if (e.Key.Key == SDL.Keycode.Up) sel = Menu.MoveSelection(sel, -1, menu.ItemCount);
+                else if (e.Key.Key == SDL.Keycode.Down) sel = Menu.MoveSelection(sel, +1, menu.ItemCount);
+                char chosen = Menu.ResolveKey(key, menu.Keytab, sel, escKey);
+                if (chosen != '\0') return chosen;
             }
 
             frame++;
-            _objects.Gamecount++;
-            _objects.UpdateObjects(_gameVp, touch: false); // animate backdrop (torches, water)
-            DrawMenuFrame(menu, sel, frame);
+            tick?.Invoke();
+            draw(sel, frame);
             _presenter.Present(_screen);
             _clock.Wait();
         }
+        return '\0';
     }
 
     /// <summary>Returns false only for EXIT (leave the menu back to the episode selector).</summary>
