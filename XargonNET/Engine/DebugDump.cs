@@ -492,6 +492,42 @@ public static class DebugDump
         return 0;
     }
 
+    /// <summary>--textinput EP TEXT GLYPH [png]: level frame with the high-score name box (hiwin, row 0) as the
+    /// winput modal draws it: window, blanked field, TEXT, cursor glyph GLYPH (0 = blank).</summary>
+    public static int DumpTextInput(int episode, string typed, int glyph, string? outFile)
+    {
+        var set = AssetSet.Mount(AssetSet.FindAssetsDir(), episode);
+        var screen = new VgaScreen();
+        set.LoadPalette(screen);
+        var shapes = new ShapeManager(set.Graphics);
+        var text = new Ui.TextRenderer(shapes);
+        var board = set.LoadBoard("BOARD_01");
+        Objects.Effects.ApplyForBoard(screen, board);
+        var vp = new Viewport(0, 2, VgaScreen.Width, 158);
+        var objs = new Objects.ObjectManager(board, shapes, set.Info, screen, episode: episode) { Text = text };
+        _ = new Objects.Behaviors(objs);
+        objs.ReenterPlayer(1);
+        var player = new Objects.Player(objs, vp);
+        for (int t = 0; t < 30; t++) { objs.Gamecount++; player.Update(new Objects.Controls()); objs.UpdateObjects(vp); }
+        screen.Clear(248);
+        objs.DrawBack(screen, vp);
+        BoardRenderer.DrawBoard(screen, vp, board, set.Info, shapes);
+        objs.DrawFore(screen, vp);
+        player.Draw(screen, shapes);
+        Ui.Hud.Draw(screen, shapes, text, objs.Pl, objs.Status, objs.Gamecount);
+
+        // printhi(1): defwin(11,24,8,6,0,0,textbox); name row 0 at (8,20), font 2, fontcolor(7,1), maxlen 8.
+        var win = Ui.Window.Def(11, 24, 8, 6, 0, 0, Ui.WindowStyle.Textbox);
+        win.Draw(screen, shapes);
+        text.Draw(screen, win.Inside, 18, 4, Ui.TextRenderer.Font6, 7, -1, "- HIGH SCORES -");
+        Ui.TextInputBox.Render(screen, text, win.Inside, 8, 20, Ui.TextRenderer.Font6, 7, 1, typed, 8, glyph);
+
+        string outPath = outFile ?? Path.Combine(Directory.GetCurrentDirectory(), "textinput.png");
+        PngWriter.SaveScreen(outPath, screen);
+        Console.WriteLine($"wrote {outPath}  (ep{episode} text='{typed}' glyph={glyph})");
+        return 0;
+    }
+
     /// <summary>--banner EP LEVEL [png]: render a level frame, then the putlevelmsg banner over it.</summary>
     public static int DumpBanner(int episode, int level, string? outFile)
     {
