@@ -125,6 +125,26 @@ public sealed class LevelSession
     }
 
     /// <summary>
+    /// loadgame(): replace everything with a saved game. The C does only <c>loadboard(save_N)</c> — bd, objs, pl
+    /// and cnt_fruit are overwritten from the file — then init_colors/statwin/setorigin/drawboard. There is
+    /// NO p_reenter (the saved map hero keeps its saved position, and health is not reset) and no stats().
+    /// Saving is only allowed on the map, so the loaded board is a map; the stashed map and entry snapshot are
+    /// dropped (the port's equivalent of the stale board_t file). <c>pl</c> is applied via CopyFrom (incl. Fruit;
+    /// FruitIcon is not saved so it is left alone).
+    /// </summary>
+    public World LoadSaved(Board board, PlayerState pl)
+    {
+        _savedMap = null;
+        _oPl = null;
+        _completedLevel = 0;
+        _pl.CopyFrom(pl);
+        var w = Adopt(board, "MAP");
+        Effects.InitColors(_screen);               // init_colors()
+        Camera.SetOrigin(_vp, w.Objects.Obj(0));   // setorigin()
+        return w;
+    }
+
+    /// <summary>
     /// Enter a level from the overworld (the else branch of play()'s newlevel handling): stash the live
     /// map (saveboard) and snapshot the player (stats(1)), load the level board, restore+strip the
     /// snapshot (stats(0)), then p_reenter the hero at the level's checkpoint.

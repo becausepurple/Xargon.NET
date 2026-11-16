@@ -43,6 +43,7 @@ internal sealed class LevelHarness
 
     public void Enter(string board) => Adopt(Session.EnterLevel(board));
     public void ExitToMap() => Adopt(Session.ExitToMap());
+    public void LoadSaved(Board b, PlayerState pl) => Adopt(Session.LoadSaved(b, pl));
 
     /// <summary>One game tick: update the hero, then run death/transition handling exactly as GameApp does.</summary>
     public void Step() => Step(_idle);

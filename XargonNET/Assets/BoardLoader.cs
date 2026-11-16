@@ -59,6 +59,7 @@ public static class BoardLoader
         b.Player.Score = BinaryPrimitives.ReadUInt32LittleEndian(s.Slice(p, 4)); p += 4;
 
         b.FruitCount = s[p]; p += 1;
+        b.Player.Fruit = b.FruitCount; // cnt_fruit lives in the player state in the port (inverse of BoardWriter)
 
         // Inside-text blocks, in object order, for objects whose saved pointer was non-zero:
         // len:int16 then len+1 bytes (text + NUL).
