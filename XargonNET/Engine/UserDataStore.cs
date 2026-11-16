@@ -7,30 +7,65 @@ namespace XargonNET.Engine;
 /// </summary>
 public sealed class UserDataStore
 {
-    public string Root { get; }
+    /// <summary>Root directory, or null for an unavailable store (no per-user location could be determined).</summary>
+    public string? Root { get; }
 
+    /// <summary>False when no safe per-user directory exists: Load yields defaults, writes fail.</summary>
+    public bool IsAvailable => Root is not null;
+
+    /// <summary>Explicit root; must be an absolute path (a relative one could land in the game-data folder or repo).</summary>
     public UserDataStore(string root)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        if (!Path.IsPathRooted(root))
+            throw new ArgumentException("User data root must be an absolute path.", nameof(root));
         Root = root;
     }
 
-    /// <summary>LocalApplicationData/XargonNET (not created until a write).</summary>
-    public static UserDataStore Default() =>
-        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XargonNET"));
+    private UserDataStore() { Root = null; }
 
-    public string PathFor(string fileName) => Path.Combine(Root, fileName);
+    /// <summary>
+    /// LocalApplicationData/XargonNET, falling back to UserProfile/.xargonnet when the former is empty
+    /// (containers/services without a profile). If neither exists the store is unavailable rather than
+    /// using a relative or temp path: scores are silently not persisted instead of being written next
+    /// to the game data or into the repository. Never throws.
+    /// </summary>
+    public static UserDataStore Default() => FromFolders(Environment.GetFolderPath);
+
+    /// <summary>Testable core of <see cref="Default"/>.</summary>
+    public static UserDataStore FromFolders(Func<Environment.SpecialFolder, string> getFolder)
+    {
+        try
+        {
+            var local = getFolder(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(local) && Path.IsPathRooted(local))
+                return new UserDataStore(Path.Combine(local, "XargonNET"));
+            var profile = getFolder(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(profile) && Path.IsPathRooted(profile))
+                return new UserDataStore(Path.Combine(profile, ".xargonnet"));
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or PlatformNotSupportedException
+                                      or System.Security.SecurityException)
+        {
+        }
+        return new UserDataStore();
+    }
+
+    public string PathFor(string fileName) =>
+        Root is null ? throw new InvalidOperationException("User data store is unavailable.")
+                     : Path.Combine(Root, fileName);
 
     /// <summary>Creates the root directory if needed. Returns false on any IO failure (never throws).</summary>
     public bool EnsureDirectory()
     {
+        if (Root is null) return false;
         try
         {
             Directory.CreateDirectory(Root);
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
-                                      or ArgumentException)
+                                      or ArgumentException or System.Security.SecurityException)
         {
             return false;
         }

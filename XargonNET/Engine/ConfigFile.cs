@@ -33,7 +33,7 @@ public sealed class ConfigFile
     /// <summary>Returns defaults for a missing, unreadable or wrong-length file. Never throws.</summary>
     public static ConfigFile Load(UserDataStore store, int episode)
     {
-        if (!ValidEpisode(episode)) return new ConfigFile();
+        if (!ValidEpisode(episode) || !store.IsAvailable) return new ConfigFile();
         try
         {
             var path = store.PathFor(FileNameFor(episode));
@@ -42,7 +42,7 @@ public sealed class ConfigFile
             return Parse(File.ReadAllBytes(path));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
-                                      or ArgumentException)
+                                      or ArgumentException or System.Security.SecurityException)
         {
             return new ConfigFile();
         }
@@ -85,7 +85,7 @@ public sealed class ConfigFile
     /// </summary>
     public bool Save(UserDataStore store, int episode)
     {
-        if (!ValidEpisode(episode)) return false;
+        if (!ValidEpisode(episode) || !store.IsAvailable) return false;
         string? temp = null;
         try
         {
@@ -98,7 +98,7 @@ public sealed class ConfigFile
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
-                                      or ArgumentException)
+                                      or ArgumentException or System.Security.SecurityException)
         {
             return false;
         }

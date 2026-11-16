@@ -69,6 +69,53 @@ public sealed class ConfigFileTests : IDisposable
     }
 
     [Fact]
+    public void LockedFileGivesDefaultsWithoutThrowing()
+    {
+        if (!OperatingSystem.IsWindows()) return; // exclusive locks are advisory elsewhere
+        Assert.True(new ConfigFile { HiScores = { [0] = 5 } }.Save(Store(), 1));
+        using var hold = new FileStream(FileFor(1), FileMode.Open, FileAccess.Read, FileShare.None);
+        AssertEmpty(ConfigFile.Load(Store(), 1));
+    }
+
+    [Fact]
+    public void RelativeRootIsRejected() =>
+        Assert.Throws<ArgumentException>(() => new UserDataStore("XargonNET"));
+
+    private static readonly string Abs = Path.Combine(Path.GetTempPath(), "xargon-fake-home");
+
+    [Fact]
+    public void FromFoldersUsesLocalAppData() =>
+        Assert.Equal(Path.Combine(Abs, "XargonNET", "x"),
+            UserDataStore.FromFolders(f => f == Environment.SpecialFolder.LocalApplicationData ? Abs : "").PathFor("x"));
+
+    [Fact]
+    public void FromFoldersFallsBackToUserProfile() =>
+        Assert.Equal(Path.Combine(Abs, ".xargonnet", "x"),
+            UserDataStore.FromFolders(f => f == Environment.SpecialFolder.UserProfile ? Abs : "").PathFor("x"));
+
+    [Fact]
+    public void FromFoldersRejectsRelativeFolderValues() =>
+        Assert.False(UserDataStore.FromFolders(_ => "relative").IsAvailable);
+
+    [Fact]
+    public void FromFoldersBothEmptyGivesUnavailableStore()
+    {
+        var s = UserDataStore.FromFolders(_ => "");
+        Assert.False(s.IsAvailable);
+        Assert.Null(s.Root);
+        Assert.False(s.EnsureDirectory());
+        Assert.False(new ConfigFile().Save(s, 1));
+        AssertEmpty(ConfigFile.Load(s, 1));
+        Assert.False(File.Exists("XargonNET")); // nothing relative was created
+        Assert.False(Directory.Exists("XargonNET"));
+        Assert.False(File.Exists("config.xr1"));
+    }
+
+    [Fact]
+    public void FromFoldersNeverThrows() =>
+        Assert.False(UserDataStore.FromFolders(_ => throw new InvalidOperationException()).IsAvailable);
+
+    [Fact]
     public void GarbageOfCorrectLengthLoadsWithPrintableNames()
     {
         Directory.CreateDirectory(_dir);
