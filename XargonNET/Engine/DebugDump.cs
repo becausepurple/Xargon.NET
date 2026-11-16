@@ -364,32 +364,37 @@ public static class DebugDump
         return 0;
     }
 
-    /// <summary>--menuframe EP KIND SEL [granny] [noise]: render the game or buy menu over the intro backdrop to menuframe.png.</summary>
-    public static int DumpMenuFrame(int episode, string kind, int sel, bool granny, bool noise)
+    /// <summary>--menuframe EP game|buy|quit SEL [granny] [noise] [level]: render the game menu, buy menu or the askquit
+    /// box to menuframe.png, over the intro backdrop or (with "level") a live BOARD_01 frame with the HUD.</summary>
+    public static int DumpMenuFrame(int episode, string kind, int sel, bool granny, bool noise, bool overLevel = false)
     {
         var set = AssetSet.Mount(AssetSet.FindAssetsDir(), episode);
         var screen = new VgaScreen();
         set.LoadPalette(screen);
         var shapes = new ShapeManager(set.Graphics);
         var textR = new Ui.TextRenderer(shapes);
-        var board = set.LoadBoard("INTRO");
+        var board = set.LoadBoard(overLevel ? "BOARD_01" : "INTRO");
         Objects.Effects.ApplyForBoard(screen, board);
         var objs = new Objects.ObjectManager(board, shapes, set.Info, screen, episode: episode) { Text = textR };
-        var vp = screen.Main;
+        _ = new Objects.Behaviors(objs);
+        var vp = overLevel ? new Viewport(0, 2, VgaScreen.Width, 158) : screen.Main;
+        Objects.Player? player = null;
+        if (overLevel)
+        {
+            objs.ReenterPlayer(1);
+            player = new Objects.Player(objs, vp);
+            for (int t = 0; t < 30; t++) { objs.Gamecount++; player.Update(new Objects.Controls()); objs.UpdateObjects(vp); }
+        }
         screen.Clear(248);
         objs.DrawBack(screen, vp);
         BoardRenderer.DrawBoard(screen, vp, board, set.Info, shapes);
         objs.DrawFore(screen, vp);
+        player?.Draw(screen, shapes);
+        if (overLevel) Ui.Hud.Draw(screen, shapes, textR, objs.Pl, objs.Status, objs.Gamecount);
 
-        string cr = ((char)13).ToString();
-        Ui.Menu menu = kind == "buy"
-            ? new Ui.Menu("7  What would you like to buy?" + cr + "3RETURN TO GAME" + cr + "2A. HEALTH UNIT 15 EMERALDS" + cr
-                + "2B. EXTRA LASER 10 EMERALDS" + cr + "2C. RAPID FIRE  25 EMERALDS" + cr + "2D. 1 FIREBALL   5 EMERALDS" + cr
-                + "2E. 5 FIREBALLS 20 EMERALDS" + cr + "2F. INVINCIBLE  30 EMERALDS" + cr + cr, "RABCDEF", 1, 7, 24, 7, 12, 32, 0)
-            : new Ui.Menu("7    - GAME OPTIONS -    " + cr + "3RETURN TO GAME" + cr + "2QUIT GAME" + cr + "2SAVE GAME" + cr
-                + "2LOAD GAME" + cr + "2INSTRUCTIONS" + cr + "2ADDITIONAL INVENTORY" + cr + "2BUY EXTRA ITEMS" + cr
-                + "2GRANNY MODE is    " + cr + "2NOISE is    " + cr + cr, "RQSLIABGN", 1, 9, 24, 9, 10, 24, 2);
-        menu.Draw(screen, textR, shapes, sel, 0, granny, noise);
+        if (kind == "quit") AskQuit.Render(screen, shapes, textR);
+        else (kind == "buy" ? GameMenuDefs.CreateBuyMenu() : GameMenuDefs.CreateGameMenu())
+            .Draw(screen, textR, shapes, sel, 0, granny, noise);
 
         string outPath = Path.Combine(Directory.GetCurrentDirectory(), "menuframe.png");
         PngWriter.SaveScreen(outPath, screen);

@@ -84,6 +84,38 @@ public sealed class PopupWindows : IPopupHost
         Dismiss();
     }
 
+    /// <summary>
+    /// askquit() (xargon.c:698): draw the quit box over the current frame and wait for one fresh key press, fire
+    /// or direction; true only for Y (see <see cref="AskQuit.Answer"/>). A window close (or an already latched
+    /// close) counts as yes so the caller exits cleanly instead of hanging. Dismissal hygiene as the other popups.
+    /// </summary>
+    internal bool ConfirmQuit()
+    {
+        if (QuitLatched) return true;
+        AskQuit.Render(_screen, _shapes(), _text());
+        _presenter?.Present(_screen);
+        var answer = AskQuitAnswer.Pending;
+        while (answer == AskQuitAnswer.Pending && !_quit)
+        {
+            while (SDL.PollEvent(out SDL.Event e))
+            {
+                switch ((SDL.EventType)e.Type)
+                {
+                    case SDL.EventType.Quit: _quit = true; _onQuit?.Invoke(); break;
+                    case SDL.EventType.KeyDown:
+                        _keys?.Add(e.Key.Key);
+                        // Fresh presses only: the repeat of the key that chose EXIT must not answer the box.
+                        if (!e.Key.Repeat && answer == AskQuitAnswer.Pending) answer = AskQuit.Answer(e.Key.Key);
+                        break;
+                    case SDL.EventType.KeyUp: _keys?.Remove(e.Key.Key); break;
+                }
+            }
+            FrameTick();
+        }
+        Dismiss();
+        return _quit || answer == AskQuitAnswer.Yes;
+    }
+
     /// <summary>The scroll step a logical input requests (Up/Left/PgUp = up a line, Down/Right/PgDn = down).</summary>
     public static ScrollKey ToScroll(PopupInput k) => k switch
     {

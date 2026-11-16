@@ -52,4 +52,19 @@ public static class GameFlow
     /// <summary>pageview(200): the checkpoint for the first win page on the board loaded at game over, or null
     /// (the caller then skips the win pages; the C would just fall through to the Esc exit).</summary>
     public static Obj? WinAnchor(Board live) => PageView.FindAnchor(live, WinPage);
+
+    /// <summary>
+    /// The post-update stage of a play tick: <see cref="PollGameWon"/> FIRST, then (only if the game did not end)
+    /// the death reload or the pending level transition. Both of those swap the world's <c>ObjectManager</c>, which
+    /// would lose a <c>GameWon</c> set on the old one; in the C <c>gameover</c> ends the loop before
+    /// <c>newlevel</c> is processed on the next iteration.
+    /// </summary>
+    public static GameOver PostUpdate(ObjectManager objects, bool died, Action die, Action transition)
+    {
+        var over = PollGameWon(objects);
+        if (over != GameOver.None) return over;
+        if (died) die();
+        else if (objects.NewLevel is not null) transition();
+        return GameOver.None;
+    }
 }

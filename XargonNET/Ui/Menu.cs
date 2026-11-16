@@ -67,6 +67,38 @@ public sealed class Menu
         return key != '\0' && keytab.IndexOf(key) >= 0 ? key : '\0';
     }
 
+    /// <summary>A menu key event reduced to a selection move (-1/0/+1) and a resolved key ('\0' = none).</summary>
+    public readonly record struct MenuKey(int Move, char Key);
+
+    /// <summary>
+    /// Reduce a key event to domenu's input. Up/Left move -1 and Down/Right +1 (<c>cur += dx1+dy1</c>); a held
+    /// arrow keeps moving, so auto-repeat counts for these. Every selecting key (letters, Return, Space, Esc,
+    /// F1) ignores auto-repeat: a repeating Q that opened the menu, or a held Esc, must not select anything.
+    /// </summary>
+    public static MenuKey Translate(SDL3.SDL.Keycode key, bool repeat)
+    {
+        switch (key)
+        {
+            case SDL3.SDL.Keycode.Up: case SDL3.SDL.Keycode.Left: return new MenuKey(-1, '\0');
+            case SDL3.SDL.Keycode.Down: case SDL3.SDL.Keycode.Right: return new MenuKey(+1, '\0');
+        }
+        if (repeat) return default;
+        char c = key switch
+        {
+            SDL3.SDL.Keycode.Return or SDL3.SDL.Keycode.KpEnter => '\r',
+            SDL3.SDL.Keycode.Space => ' ',
+            SDL3.SDL.Keycode.Escape => KeyEsc,
+            SDL3.SDL.Keycode.F1 => KeyF1,
+            >= SDL3.SDL.Keycode.A and <= SDL3.SDL.Keycode.Z => (char)((int)key - 32),
+            _ => (int)key >= 'A' && (int)key <= 'Z' ? (char)key : '\0',
+        };
+        return new MenuKey(0, c);
+    }
+
+    /// <summary>The cursor glyph (font shapes 1..6) at menu tick <paramref name="tick"/>: the C's counter wraps
+    /// at 12 and the shape is <c>0x0201 + count/2</c>, so each glyph lasts two ticks.</summary>
+    public static int CursorGlyph(int tick) => 1 + (tick % 12) / 2;
+
     public void Draw(VgaScreen screen, TextRenderer text, ShapeManager shapes, int selected, int animFrame,
                      bool granny = false, bool noise = false)
     {
@@ -93,7 +125,7 @@ public sealed class Menu
         // Animated cursor glyph (font chars 1..6) left of the selected item; fontcolor 8 = two-tone 6/14.
         int cx = (_textx0 - 12) & ~7;
         int cy = ybase + (_y0 + selected) * 8;
-        char glyph = (char)(1 + animFrame % 6);
+        char glyph = (char)CursorGlyph(animFrame);
         text.Draw(screen, _window.Inside, cx, cy, TextRenderer.Font6, 8, -1, glyph.ToString());
     }
 }

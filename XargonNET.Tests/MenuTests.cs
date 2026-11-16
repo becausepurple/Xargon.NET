@@ -8,11 +8,9 @@ namespace XargonNET.Tests;
 
 public class MenuTests
 {
-    // Exact strings from XARGON.C (menu1 minus the dropped ORDERING INFO, menu2, menu3).
-    private const string GameMenuText =
-        "7    - GAME OPTIONS -    \r3RETURN TO GAME\r2QUIT GAME\r2SAVE GAME\r2LOAD GAME\r2INSTRUCTIONS\r2ADDITIONAL INVENTORY\r2BUY EXTRA ITEMS\r2GRANNY MODE is    \r2NOISE is    \r\r";
-    private const string BuyMenuText =
-        "7  What would you like to buy?\r3RETURN TO GAME\r2A. HEALTH UNIT 15 EMERALDS\r2B. EXTRA LASER 10 EMERALDS\r2C. RAPID FIRE  25 EMERALDS\r2D. 1 FIREBALL   5 EMERALDS\r2E. 5 FIREBALLS 20 EMERALDS\r2F. INVINCIBLE  30 EMERALDS\r\r";
+    // The game/buy menu strings are the shared constants (GameMenuDefs), the same ones the game and --menuframe use.
+    private const string GameMenuText = GameMenuDefs.GameText;
+    private const string BuyMenuText = GameMenuDefs.BuyText;
 
     private static (VgaScreen screen, ShapeManager shapes, TextRenderer text) Fixture()
     {
@@ -40,7 +38,7 @@ public class MenuTests
     public void GameMenuWindowIsSixRows()
     {
         Assert.Equal(11, CrCount(GameMenuText));
-        var m = new Menu(GameMenuText, "RQSLIABGN", 1, 9, 24, 9, 10, 24, 2);
+        var m = new Menu(GameMenuText, GameMenuDefs.GameKeys, 1, 9, 24, 9, 10, 24, 2);
         Assert.Equal(96, m.Inside.H);
         Assert.Equal((72, 24, 176, 112), (m.Border.X, m.Border.Y, m.Border.W, m.Border.H));
         Assert.Equal((80, 32, 160, 96), (m.Inside.X, m.Inside.Y, m.Inside.W, m.Inside.H));
@@ -50,7 +48,7 @@ public class MenuTests
     public void BuyMenuWindowIsFiveRows()
     {
         Assert.Equal(9, CrCount(BuyMenuText));
-        var m = new Menu(BuyMenuText, "RABCDEF", 1, 7, 24, 7, 12, 32, 0); // domenu(menu3,..,1,7,0,24,7,12,32,0)
+        var m = new Menu(BuyMenuText, GameMenuDefs.BuyKeys, 1, 7, 24, 7, 12, 32, 0); // domenu(menu3,..,1,7,0,24,7,12,32,0)
         Assert.Equal(80, m.Inside.H);
         Assert.Equal((56, 32, 208, 96), (m.Border.X, m.Border.Y, m.Border.W, m.Border.H));
     }
@@ -84,7 +82,7 @@ public class MenuTests
     private static byte[] Render(string text, int flag, bool granny, bool noise)
     {
         var (screen, shapes, tr) = Fixture();
-        var m = new Menu(text, "RQSLIABGN", 1, 9, 24, 9, 10, 24, flag);
+        var m = new Menu(text, GameMenuDefs.GameKeys, 1, 9, 24, 9, 10, 24, flag);
         m.Draw(screen, tr, shapes, 0, 0, granny, noise);
         return (byte[])screen.Pixels.Clone();
     }
@@ -147,7 +145,7 @@ public class MenuTests
     {
         // The cursor glyph (font shapes 1..6) uses fontcolor 8 = two-tone 6/14, never solid 14 only.
         var (screen, shapes, tr) = Fixture();
-        var m = new Menu(GameMenuText, "RQSLIABGN", 1, 9, 24, 9, 10, 24, 0);
+        var m = new Menu(GameMenuText, GameMenuDefs.GameKeys, 1, 9, 24, 9, 10, 24, 0);
         m.Draw(screen, tr, shapes, 0, 0);
         bool has6 = false, has14 = false;
         // cursor at inside x=8..16, y = 6 + 1*8 = 14

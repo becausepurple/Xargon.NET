@@ -42,6 +42,7 @@ public sealed class GameApp : IDisposable
     private PopupWindows _popups = null!;       // blocking text-popup host (dotextmsg)
     private HighScoreWindow _highScores = null!;   // printhi(0)/printhi(1) modals
     private HintFlags _hints = new();           // first-time hints, reset per episode mount
+    private readonly HotkeyState _hot = new();  // granny/noise/debug + the F7/Z streak (process-lifetime globals in the C)
 
     public bool Init()
     {
@@ -125,7 +126,9 @@ public sealed class GameApp : IDisposable
                 });
             if (chosen == '\0') return; // window closed (quit latched)
 
-            if (!HandleMenuChoice(chosen)) return; // EXIT -> back to episode selector
+            var result = HandleMenuChoice(chosen);
+            if (result == MenuResult.Exit) return; // EXIT confirmed -> back to episode selector
+            if (result == MenuResult.Continue) continue; // askquit answered No: the modal is just drawn over the live frame
             LoadBackdrop();
             DrawMenuFrame(menu, sel, 0);
             FadeIn();
@@ -147,19 +150,11 @@ public sealed class GameApp : IDisposable
             {
                 if ((SDL.EventType)e.Type == SDL.EventType.Quit) { _quit = true; return '\0'; }
                 if ((SDL.EventType)e.Type != SDL.EventType.KeyDown) continue;
-                char key = e.Key.Key switch
-                {
-                    SDL.Keycode.Up => '\0',
-                    SDL.Keycode.Down => '\0',
-                    SDL.Keycode.Return => '\r',
-                    SDL.Keycode.Space => ' ',
-                    SDL.Keycode.Escape => Menu.KeyEsc,
-                    SDL.Keycode.F1 => Menu.KeyF1,
-                    _ => LetterKey(e.Key.Key),
-                };
-                if (e.Key.Key == SDL.Keycode.Up) sel = Menu.MoveSelection(sel, -1, menu.ItemCount);
-                else if (e.Key.Key == SDL.Keycode.Down) sel = Menu.MoveSelection(sel, +1, menu.ItemCount);
-                char chosen = Menu.ResolveKey(key, menu.Keytab, sel, escKey);
+                // Auto-repeat never selects (a repeating Q that opened this menu must not read as QUIT); held
+                // arrows keep moving. Left/Right move like Up/Down (domenu: cur += dx1+dy1).
+                var input = Menu.Translate(e.Key.Key, e.Key.Repeat);
+                if (input.Move != 0) sel = Menu.MoveSelection(sel, input.Move, menu.ItemCount);
+                char chosen = Menu.ResolveKey(input.Key, menu.Keytab, sel, escKey);
                 if (chosen != '\0') return chosen;
             }
 
@@ -172,40 +167,37 @@ public sealed class GameApp : IDisposable
         return '\0';
     }
 
-    /// <summary>Returns false only for EXIT (leave the menu back to the episode selector).</summary>
-    private bool HandleMenuChoice(char key)
+    /// <summary>What the main menu does after a choice: redraw the backdrop and fade in (Redraw), leave for the
+    /// episode selector (Exit), or carry on with the live frame untouched (Continue).</summary>
+    private enum MenuResult { Redraw, Exit, Continue }
+
+    private MenuResult HandleMenuChoice(char key)
     {
         switch (key)
         {
             case 'P': // PLAY NEW GAME -> the overworld map, then levels reached from it
                 FadeOut();
                 RunAdventure();
-                return true;
+                return MenuResult.Redraw;
             case 'I': // INSTRUCTIONS -> dotextmsg(1) (XARGON HELP, scroll form) over the menu
                 _popups.TextMessage(1, PopupStyle.Plain);
-                return true;
+                return MenuResult.Redraw;
             case 'S': // THE STORY -> page viewer over the STORY board, from page 0
                 RunPageView("STORY", 0);
-                return true;
+                return MenuResult.Redraw;
             case 'C': // CREDITS -> page viewer over the INTRO board, from page 20
                 RunPageView("INTRO", 20);
-                return true;
-            case 'E': // EXIT
+                return MenuResult.Redraw;
+            case 'E': // EXIT (also Esc): askquit(); only Y leaves. A closed window counts as yes.
+                if (!_popups.ConfirmQuit()) return MenuResult.Continue;
                 FadeOut();
-                return false;
+                return MenuResult.Exit;
             case 'H': // HIGH SCORES -> printhi(0): the table over the menu, then rest()
                 _highScores.Show();
-                return true;
+                return MenuResult.Redraw;
             default: // LOAD/DEMO — not implemented yet
-                return true;
+                return MenuResult.Redraw;
         }
-    }
-
-    private static char LetterKey(SDL.Keycode k)
-    {
-        int c = (int)k;
-        if (c >= 'a' && c <= 'z') return (char)(c - 32);
-        return '\0';
     }
 
     private void LoadBackdrop()
@@ -223,11 +215,6 @@ public sealed class GameApp : IDisposable
 
     // ---- Adventure: overworld map <-> platformer levels -----------------------------------
 
-    // TASK7: replace with the full game menu (RQSLIABGN, 9 items). Same window style as the real one, two items.
-    internal const string SkeletonGameMenuText =
-        "7    - GAME OPTIONS -    \r3RETURN TO GAME\r2QUIT GAME\r\r";
-    internal const string SkeletonGameMenuKeys = "RQ";
-
     /// <summary>
     /// Plays the adventure until the game ends. Contract with the main menu: returns normally (after the
     /// win pages / high scores for Quit and Won) so the menu redraws; when the window is closed the quit
@@ -235,6 +222,13 @@ public sealed class GameApp : IDisposable
     /// nothing is shown or saved).
     /// </summary>
     private void RunAdventure()
+    {
+        _clock.TicksPerFrame = _hot.TicksPerFrame; // granny survives across play sessions (a global in the C)
+        try { RunAdventureLoop(); }
+        finally { _clock.TicksPerFrame = 1; } // menus/popups outside play run at the base rate
+    }
+
+    private void RunAdventureLoop()
     {
         _pl = Assets.PlayerState.NewGame();
         _pl.Level = LevelSession.MapLevel;
@@ -247,6 +241,8 @@ public sealed class GameApp : IDisposable
         var debug = GameFlow.ParseDebug(Environment.GetEnvironmentVariable(GameFlow.DebugEnvVar));
         var over = GameOver.None;
         int ticks = 0;
+        // The C reads ONE keystroke per tick from the BIOS buffer; extra presses wait their turn here.
+        var pending = new Queue<SDL.Keycode>();
 
         while (_running && !_quit && over == GameOver.None)
         {
@@ -256,18 +252,23 @@ public sealed class GameApp : IDisposable
                 {
                     case SDL.EventType.Quit: _quit = true; return;
                     case SDL.EventType.KeyDown:
-                        if (e.Key.Key is SDL.Keycode.Escape or SDL.Keycode.Q) // escape / 'Q' -> gamemenu()
-                        {
-                            if (RunGameMenu()) over = GameOver.Quit;
-                            if (_quit) return;
-                            break;
-                        }
-                        if (e.Key.Key == SDL.Keycode.G) _clock.TicksPerFrame = 3 - _clock.TicksPerFrame; // granny mode
+                        // Hotkeys fire on fresh presses only: auto-repeat must not re-open the menu or re-toggle.
+                        if (!e.Key.Repeat && !Hotkeys.IsNeutral(e.Key.Key) && pending.Count < 16) pending.Enqueue(e.Key.Key);
                         _keys.Add(e.Key.Key);
                         break;
                     case SDL.EventType.KeyUp: _keys.Remove(e.Key.Key); break;
                 }
-                if (over != GameOver.None) break;
+            }
+
+            if (pending.Count > 0)
+            {
+                var action = Hotkeys.Decide(_hot, new KeyPress(pending.Dequeue()));
+                if (action != HotkeyAction.None)
+                {
+                    over = RunHotkey(action);
+                    pending.Clear(); // a modal ran: presses made inside it were consumed by it
+                    if (_quit) return;
+                }
             }
             if (over != GameOver.None) break;
 
@@ -279,17 +280,16 @@ public sealed class GameApp : IDisposable
             if (_mapHero is not null) _mapHero.Update(_controls);
             else _player?.Update(_controls);
 
-            if (_player?.Died == true)
-            {
-                AdoptWorld(_session.Die()); // death -> reload level + restore snapshot (p_reenter(1))
-            }
-            else
+            bool died = _player?.Died == true;
+            if (!died)
             {
                 _objects.UpdateObjects(_gameVp);
                 _objects.UpdBotMsg(); // upd_botmsg(): after upd_objs(1), before refresh
-                if (_objects.NewLevel is not null) HandleTransition();
             }
-            over = GameFlow.PollGameWon(_objects); // checkpoint state 4: gameover=2
+            // checkpoint state 4 sets gameover=2: polled BEFORE a death reload / level transition swaps the world.
+            over = GameFlow.PostUpdate(_objects, died,
+                die: () => AdoptWorld(_session.Die()), // death -> reload level + restore snapshot (p_reenter(1))
+                transition: HandleTransition);
 
             DrawLevel();
             _presenter.Present(_screen);
@@ -302,17 +302,76 @@ public sealed class GameApp : IDisposable
         if (over != GameOver.None && !_quit) RunGameEnd(over);
     }
 
-    /// <summary>The temporary game menu (gamemenu): RETURN resumes play (keys cleared, clock reset); QUIT
-    /// GAME returns true (gameover=1, no confirmation). Closing the window latches the quit flag.</summary>
+    /// <summary>The game menu (gamemenu, xargon.c:1062): runs one domenu pass, then the chosen option. Returns true for
+    /// QUIT GAME (gameover=1, no confirmation). Closing the window latches the quit flag.</summary>
     private bool RunGameMenu()
     {
-        var menu = new Menu(SkeletonGameMenuText, SkeletonGameMenuKeys, 1, 2, 24, 9, 10, 24, 0);
+        _clock.TicksPerFrame = 1; // domenu ticks at the base rate whatever the granny pace
+        var menu = GameMenuDefs.CreateGameMenu();
         int sel = 0;
+        // Every option (including GRANNY/NOISE) sets done=1 in the C, so the menu runs exactly once; the toggled
+        // state shows the next time it opens. 'R' (also Esc) just closes.
         char chosen = RunMenu(menu, 'R', ref sel, draw: (s, f) => DrawMenuFrame(menu, s, f));
+        bool quit = false;
+        if (!_quit)
+        {
+            switch (GameMenuDefs.Map(chosen))
+            {
+                case GameMenuAction.Quit: quit = true; break;                 // gameover=1, no confirmation
+                case GameMenuAction.Save: HandleSave(); break;
+                case GameMenuAction.Load: HandleLoad(); break;
+                case GameMenuAction.Instructions: _popups.TextMessage(1, PopupStyle.Plain); break;
+                case GameMenuAction.Inventory: HandleInventory(); break;
+                case GameMenuAction.Buy: HandleBuy(); break;
+                case GameMenuAction.Granny: _hot.Granny = !_hot.Granny; break;
+                case GameMenuAction.Noise: _hot.Noise = !_hot.Noise; break;
+            }
+        }
+        // Closing hygiene shared with PopupWindows.Dismiss: no held key may leak into play (the Q that opened
+        // the menu, a held arrow or Shift), reset the pace clock, and mask the fire buttons until released.
         _keys.Clear();
         _clock.Reset();
-        return chosen == 'Q';
+        _controls.Fire1Off = 1;
+        _controls.Fire2Off = 1;
+        _clock.TicksPerFrame = _hot.TicksPerFrame;
+        return quit;
     }
+
+    /// <summary>Run one decided hotkey (the C's play() switch, xargon.c:1180-1230). Returns the game-over
+    /// reason it raised (QUIT GAME from the menu), or <see cref="GameOver.None"/>.</summary>
+    private GameOver RunHotkey(HotkeyAction action)
+    {
+        switch (action)
+        {
+            case HotkeyAction.Help: _popups.TextMessage(1, PopupStyle.Plain); break;   // F1: dotextmsg(1,0)
+            case HotkeyAction.Pause: _popups.TextMessage(6, PopupStyle.Plain); break;  // P: dotextmsg(6,0)
+            case HotkeyAction.Cheat:
+                _popups.TextMessage(5, PopupStyle.Plain); // the popup shows BEFORE the effects are applied
+                if (!_quit) Hotkeys.ApplyCheat(_objects);
+                break;
+            case HotkeyAction.ToggleGranny: _clock.TicksPerFrame = _hot.TicksPerFrame; break; // state flipped by Decide
+            case HotkeyAction.ToggleNoise: break; // soundf only gates digitised SFX; no audio yet, state is stored
+            case HotkeyAction.ToggleDebug: break; // debug only swaps the score field for coreleft() in the C: flag stored only
+            case HotkeyAction.Save: HandleSave(); break;
+            case HotkeyAction.Load: HandleLoad(); break;
+            case HotkeyAction.Buy: HandleBuy(); break;
+            case HotkeyAction.Inventory: HandleInventory(); break;
+            case HotkeyAction.OpenGameMenu: return RunGameMenu() ? GameOver.Quit : GameOver.None;
+        }
+        return GameOver.None;
+    }
+
+    // TASK8: savegame() (S key / SAVE GAME): allowed only when the map/level checkpoint state permits, else message 4.
+    private void HandleSave() { }
+
+    // TASK9: loadgame() (L key / LOAD GAME).
+    private void HandleLoad() { }
+
+    // TASK10: inv_win() (Enter / ADDITIONAL INVENTORY).
+    private void HandleInventory() { }
+
+    // TASK10: buymenu() (B key / BUY EXTRA ITEMS; silently ignored on the map).
+    private void HandleBuy() { }
 
     /// <summary>play() tail: [pageview(200) if won] then printhi(1), per <see cref="GameFlow.Plan"/>.</summary>
     private void RunGameEnd(GameOver over)
@@ -375,7 +434,7 @@ public sealed class GameApp : IDisposable
     private void DrawMenuFrame(Menu menu, int sel, int frame)
     {
         DrawLevel();
-        menu.Draw(_screen, _text, _shapes, sel, frame / 2);
+        menu.Draw(_screen, _text, _shapes, sel, frame, _hot.Granny, _hot.Noise); // the ON/OFF overlay is menuflag 2 only
     }
 
     // ---- Episode selector -----------------------------------------------------------------
