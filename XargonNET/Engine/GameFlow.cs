@@ -35,6 +35,11 @@ public static class GameFlow
         return GameOver.Won;
     }
 
+    /// <summary>The C's map test <c>objs[findcheckpt(0)].state==5</c> (gamemenu save/buy, xargon.c:1078/1105): true on
+    /// the overworld map. Quirk kept: <c>findcheckpt</c> returns 0 when the board has no checkpoint 0, so the test
+    /// then reads the HERO's state (objs[0]).</summary>
+    public static bool IsOnMap(ObjectManager objects) => objects.Obj(objects.FindCheckpt(0)).State == 5;
+
     /// <summary>Parses XARGON_DEBUG_GAMEOVER: <c>won</c> | <c>quit</c>, optionally <c>@TICKS</c>
     /// (default <see cref="DebugDefaultTicks"/>). Anything else yields null (no trigger).</summary>
     public static DebugGameOver? ParseDebug(string? value)

@@ -37,9 +37,7 @@ public sealed partial class Behaviors
                 {
                     case 1:
                         while (_w.InvCount(Inv.Laser) < 5) _w.AddInv(Inv.Laser);
-                        _w.Screen.SetColor6(162, 32, 0, 0); _w.Screen.SetColor6(163, 38, 0, 0);
-                        _w.Screen.SetColor6(164, 44, 0, 0); _w.Screen.SetColor6(165, 50, 0, 0);
-                        _w.Screen.SetColor6(166, 56, 0, 0); _w.Screen.SetColor6(167, 63, 0, 0);
+                        Effects.SetRapidFirePalette(_w.Screen);
                         _w.Txt("You now have RAPID FIRE", 3, 0);
                         break;
                     case 2: case 6: case 8: case 14:
@@ -278,9 +276,7 @@ public sealed partial class Behaviors
                         if (_w.InvCount(Inv.Laser) < 5)
                         {
                             _w.AddInv(Inv.Laser);
-                            _w.Screen.SetColor6(162, 23, 13, 33); _w.Screen.SetColor6(163, 29, 19, 39);
-                            _w.Screen.SetColor6(164, 35, 25, 45); _w.Screen.SetColor6(165, 42, 32, 51);
-                            _w.Screen.SetColor6(166, 49, 40, 57); _w.Screen.SetColor6(167, 57, 50, 63);
+                            Effects.SetExtraLaserPalette(_w.Screen);
                         }
                     }
                     else _w.AddInv(p.State);

@@ -372,8 +372,34 @@ public sealed class GameApp : IDisposable
     /// <summary>inv_win() (Enter / ADDITIONAL INVENTORY): the window over the current frame, then rest(); the next level frame repaints.</summary>
     private void HandleInventory() => _inventory.Show(InventoryCounts.From(_objects.InvCount));
 
-    // TASK10: buymenu() (B key / BUY EXTRA ITEMS; silently ignored on the map).
-    private void HandleBuy() { }
+    /// <summary>B key / BUY EXTRA ITEMS (gamemenu/play, xargon.c:1104/1228): only inside a level; on the map the C does
+    /// nothing at all (no message).</summary>
+    private void HandleBuy()
+    {
+        if (!GameFlow.IsOnMap(_objects)) RunBuyMenu();
+    }
+
+    /// <summary>buymenu() (xargon.c:923): the buy menu over the level frame (the HUD redraws every frame, so the emerald
+    /// count and hearts follow each purchase). Each purchase reopens the menu until R/Esc; too few emeralds shows
+    /// dotextmsg(7) first. A window close latches quit and returns at once.</summary>
+    private void RunBuyMenu()
+    {
+        var menu = GameMenuDefs.CreateBuyMenu();
+        _clock.TicksPerFrame = 1; // domenu ticks at the base rate whatever the granny pace
+        while (!_quit)
+        {
+            int sel = 0; // each domenu call starts on the first item
+            char chosen = RunMenu(menu, 'R', ref sel, draw: (s, f) => DrawMenuFrame(menu, s, f));
+            if (_quit || chosen == 'R') break;
+            if (BuyMenu.ItemFor(chosen) is { } item) BuyMenu.Apply(item, _objects, _popups);
+        }
+        // Closing hygiene shared with PopupWindows.Dismiss.
+        _keys.Clear();
+        _clock.Reset();
+        _controls.Fire1Off = 1;
+        _controls.Fire2Off = 1;
+        _clock.TicksPerFrame = _hot.TicksPerFrame;
+    }
 
     /// <summary>play() tail: [pageview(200) if won] then printhi(1), per <see cref="GameFlow.Plan"/>.</summary>
     private void RunGameEnd(GameOver over)

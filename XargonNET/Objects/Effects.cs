@@ -17,6 +17,22 @@ public static class Effects
 {
     public const int EffectsKind = ObjectKind.Effects;
 
+    /// <summary>Rapid-fire laser colours: setcolor(162..167) red ramp (inv_laser bonus 1 and buymenu C).</summary>
+    public static void SetRapidFirePalette(VgaScreen screen)
+    {
+        screen.SetColor6(162, 32, 0, 0); screen.SetColor6(163, 38, 0, 0);
+        screen.SetColor6(164, 44, 0, 0); screen.SetColor6(165, 50, 0, 0);
+        screen.SetColor6(166, 56, 0, 0); screen.SetColor6(167, 63, 0, 0);
+    }
+
+    /// <summary>Extra-laser colours: setcolor(162..167) blue-violet ramp (laser token and buymenu B).</summary>
+    public static void SetExtraLaserPalette(VgaScreen screen)
+    {
+        screen.SetColor6(162, 23, 13, 33); screen.SetColor6(163, 29, 19, 39);
+        screen.SetColor6(164, 35, 25, 45); screen.SetColor6(165, 42, 32, 51);
+        screen.SetColor6(166, 49, 40, 57); screen.SetColor6(167, 57, 50, 63);
+    }
+
     /// <summary>Find the level's effects object and apply its sky-colour preset to the palette.</summary>
     public static void ApplyForBoard(VgaScreen screen, Board board)
     {
