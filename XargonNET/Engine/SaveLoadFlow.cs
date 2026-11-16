@@ -22,17 +22,24 @@ public sealed class SaveLoadFlow
     /// <summary>dotextmsg(4): "You may only SAVE a game from the MAP board."</summary>
     public const int SaveRefusedMessage = 4;
 
+    /// <summary>Status-bar texts for failures. Port additions, not in the original (which has no error path).</summary>
+    public const string SaveFailedText = "Game could not be saved.",
+        NameNotStoredText = "Saved, but the slot name was not stored.",
+        LoadFailedText = "Could not load that game.";
+
     private readonly UserDataStore _store;
     private readonly HighScoreStore _cfg;
     private readonly Func<int> _episode;
     private readonly IPopupHost _popups;
     private readonly Func<string, string, int> _pick;
     private readonly Func<int, string, string?> _askName;
+    private readonly Action<string> _notify;
 
     /// <param name="pick">loadsavewin(title, blankText): the chosen slot 0..6 or -1 (Esc / window closed).</param>
     /// <param name="askName">winput over the slot's name cell, pre-filled with the existing name; null = cancelled.</param>
+    /// <param name="notify">Short status-bar text for a failed save or load (port additions: the C has no error path).</param>
     public SaveLoadFlow(UserDataStore store, HighScoreStore cfg, Func<int> episode, IPopupHost popups,
-        Func<string, string, int> pick, Func<int, string, string?> askName)
+        Func<string, string, int> pick, Func<int, string, string?> askName, Action<string>? notify = null)
     {
         _store = store;
         _cfg = cfg;
@@ -40,6 +47,7 @@ public sealed class SaveLoadFlow
         _popups = popups;
         _pick = pick;
         _askName = askName;
+        _notify = notify ?? (_ => { });
     }
 
     /// <summary>
@@ -63,10 +71,14 @@ public sealed class SaveLoadFlow
         string name = Sanitise(typed);
         if (name.Length == 0) return false; // cancelled (Esc), window closed, or a blank name: nothing is saved
 
-        if (!SaveGames.TryWrite(_store, episode, slot, board, pl)) return false;
+        if (!SaveGames.TryWrite(_store, episode, slot, board, pl))
+        {
+            _notify(SaveFailedText); // never let the player believe an unsaved game was saved
+            return false;
+        }
         var cfg = _cfg.Load(episode);       // read-modify-write: high scores and other slot names are kept
         cfg.SaveNames[slot] = name;
-        _cfg.Save(episode, cfg);
+        if (!_cfg.Save(episode, cfg)) _notify(NameNotStoredText); // the slot name stays in memory for this session only
         return true;
     }
 
@@ -81,7 +93,9 @@ public sealed class SaveLoadFlow
         if ((uint)slot >= SaveGames.Slots) return null;
         int episode = _episode();
         if (_cfg.Load(episode).SaveNames[slot].Length == 0) return null;
-        return SaveGames.TryRead(_store, episode, slot);
+        var board = SaveGames.TryRead(_store, episode, slot);
+        if (board is null) _notify(LoadFailedText); // a NAMED slot that cannot be loaded; an empty slot stays silent as in the C
+        return board;
     }
 
     /// <summary>Keep what the config file can store: printable ASCII 32..126, at most 9 characters.</summary>

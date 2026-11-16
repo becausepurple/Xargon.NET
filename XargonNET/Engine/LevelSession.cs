@@ -88,13 +88,14 @@ public sealed class LevelSession
     }
 
     /// <summary>Build the object world for a board and apply (or, when deferring, queue) its effects palette.</summary>
-    private ObjectManager BuildWorld(Board b, bool deferPalette = false)
+    private ObjectManager BuildWorld(Board b, bool deferPalette = false, bool isolate = false)
     {
+        // Build the manager first: if it throws (a hostile board) nothing session-visible has changed yet.
+        var om = new ObjectManager(b, _shapes, _info, _screen, _pl, _episode)
+        { Text = _text, Popups = Popups, Hints = Hints, IsolateHandlerFaults = isolate || IsolateHandlerFaults };
+        _ = new Behaviors(om);
         if (deferPalette) _pendingPalette = () => Effects.ApplyForBoard(_screen, b);
         else { _pendingPalette = null; Effects.ApplyForBoard(_screen, b); }
-        var om = new ObjectManager(b, _shapes, _info, _screen, _pl, _episode)
-        { Text = _text, Popups = Popups, Hints = Hints };
-        _ = new Behaviors(om);
         return om;
     }
 
@@ -134,15 +135,25 @@ public sealed class LevelSession
     /// </summary>
     public World LoadSaved(Board board, PlayerState pl)
     {
+        // Atomic swap: build and frame the new world first; only when that succeeded replace the session state. A throw
+        // from the build leaves the player state, the stashed map and the current world exactly as they were.
+        var om = BuildWorld(board, isolate: true);
+        Camera.SetOrigin(_vp, om.Obj(0));          // setorigin()
         _savedMap = null;
         _oPl = null;
         _completedLevel = 0;
         _pl.CopyFrom(pl);
-        var w = Adopt(board, "MAP");
+        IsolateHandlerFaults = true;               // every world built for the rest of this game session stays isolated
+        _curBoard = board;
+        _curObjects = om;
+        _curBoardName = "MAP";
         Effects.InitColors(_screen);               // init_colors()
-        Camera.SetOrigin(_vp, w.Objects.Obj(0));   // setorigin()
-        return w;
+        return new World(board, om);
     }
+
+    /// <summary>True once a saved game was loaded: worlds this session builds from then on isolate handler faults
+    /// (see <see cref="ObjectManager.IsolateHandlerFaults"/>), because a loaded save is not trusted per field.</summary>
+    public bool IsolateHandlerFaults { get; private set; }
 
     /// <summary>
     /// Enter a level from the overworld (the else branch of play()'s newlevel handling): stash the live

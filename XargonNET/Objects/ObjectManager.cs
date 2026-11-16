@@ -126,7 +126,45 @@ public sealed class ObjectManager
     public int Dispatch(int n, int msg, int z)
     {
         if ((uint)n >= (uint)_objects.Count) return 0;
-        return _kindMsg[_objects[n].Kind](n, msg, z);
+        return Call(n, msg, z);
+    }
+
+    /// <summary>
+    /// Fault isolation for worlds built from a loaded save (opt-in, default off). A tampered or bit-rotted save can parse
+    /// and pass the structural checks yet carry per-object values (State, Counter, StateCount, ...) that a handler
+    /// uses to index a table. With this set, an exception from one object's handler (IndexOutOfRange, NullReference,
+    /// InvalidOperation, Argument, Overflow, Format) kills that object and the frame carries on; the hero (object 0) is
+    /// instead reset to standing, since it must not vanish. With it off, handler exceptions propagate as before so real
+    /// bugs stay visible in tests and normal play.
+    /// </summary>
+    public bool IsolateHandlerFaults { get; set; }
+
+    /// <summary>kindmsg[objkind](n, msg, z), optionally fault-isolated (see <see cref="IsolateHandlerFaults"/>).</summary>
+    private int Call(int n, int msg, int z)
+    {
+        if (!IsolateHandlerFaults) return _kindMsg[_objects[n].Kind](n, msg, z);
+        try
+        {
+            return _kindMsg[_objects[n].Kind](n, msg, z);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or NullReferenceException or InvalidOperationException
+                                      or ArgumentException or OverflowException or FormatException)
+        {
+            IsolateFault(n);
+            return 0;
+        }
+    }
+
+    /// <summary>Contain a faulting object: kill it, or for the hero reset it to a standing, motionless state.</summary>
+    private void IsolateFault(int n)
+    {
+        var o = _objects[n];
+        if (n == 0)
+        {
+            o.State = 0; o.SubState = 0; o.StateCount = 0; o.Counter = 0; o.Xd = 0; o.Yd = 0;
+            return;
+        }
+        o.Kind = ObjKillme;
     }
 
     // ---- Object lifecycle (X_OBJMAN.C) ----------------------------------------------------
@@ -248,7 +286,7 @@ public sealed class ObjectManager
             // the player again once its zaphold reaches 0 (otherwise it only ever hits once).
             if (touch && _objects[n].ZapHold > 0) _objects[n].ZapHold--;
             if (n == 0) continue; // player handled by Player.Update
-            if (_hasBehavior[_objects[n].Kind]) _kindMsg[_objects[n].Kind](n, Msg.Update, 0);
+            if (_hasBehavior[_objects[n].Kind]) Call(n, Msg.Update, 0);
         }
         if (touch) HandleTouch();
         UpdateBlocks(vp);
@@ -338,15 +376,15 @@ public sealed class ObjectManager
                 {
                     if (b.X < a.X + a.Xl && a.X < b.X + b.Xl && b.Y < a.Y + a.Yl && a.Y + 18 < b.Y + b.Yl)
                     {
-                        _kindMsg[a.Kind](n, Msg.Touch, n2);
-                        _kindMsg[b.Kind](n2, Msg.Touch, n);
+                        Call(n, Msg.Touch, n2);
+                        Call(n2, Msg.Touch, n);
                     }
                     continue;
                 }
                 if (a.X < b.X + b.Xl && b.X < a.X + a.Xl && a.Y < b.Y + b.Yl && b.Y < a.Y + a.Yl)
                 {
-                    _kindMsg[a.Kind](n, Msg.Touch, n2);
-                    _kindMsg[b.Kind](n2, Msg.Touch, n);
+                    Call(n, Msg.Touch, n2);
+                    Call(n2, Msg.Touch, n);
                 }
             }
         }
@@ -674,7 +712,7 @@ public sealed class ObjectManager
     {
         for (int i = 0; i < _objects.Count; i++)
             if ((KindDefs.Get(_objects[i].Kind).Flags & GameFlags.Trigger) != 0 && _objects[i].Counter == cnt)
-                _kindMsg[_objects[i].Kind](i, msg, fromObj);
+                Call(i, msg, fromObj);
     }
 
     private const int ObjCheckpt = ObjectKind.Checkpt;
@@ -774,7 +812,7 @@ public sealed class ObjectManager
             if (!want) continue;
 
             DrawTrace?.Add(n);
-            if (_hasBehavior[o.Kind]) _kindMsg[o.Kind](n, Msg.Draw, 0); // handler draws via DrawSprite
+            if (_hasBehavior[o.Kind]) Call(n, Msg.Draw, 0); // handler draws via DrawSprite
             else _shapes.DrawShape(screen, vp, kd.ShapeTable * 256 + kd.DrawOffset, o.X, o.Y);
         }
     }

@@ -80,7 +80,8 @@ public sealed class GameApp : IDisposable
             () => _quit = true, () => _quit, () => configStore.Load(_episode).SaveNames);
         _saveLoad = new SaveLoadFlow(userStore, configStore, () => _episode, _popups,
             pick: (title, blank) => AtBaseRate(() => slotWindow.Pick(title, blank)),
-            askName: (slot, existing) => AtBaseRate(() => AskSaveName(slot, existing)));
+            askName: (slot, existing) => AtBaseRate(() => AskSaveName(slot, existing)),
+            notify: msg => _objects.Txt(msg, 5, 0)); // status bar; (not visible on the main-menu backdrop)
 
         try
         {
@@ -386,8 +387,8 @@ public sealed class GameApp : IDisposable
     }
 
     /// <summary>savegame() (S key / SAVE GAME): only on the map (else message 4), slot window, then the name typed into the
-    /// chosen row. The next frame repaints over the window (moddrawboard). A failed write is silent: the C has no error
-    /// path and no text exists for one; the slot keeps its previous file and name.</summary>
+    /// chosen row. The next frame repaints over the window (moddrawboard). A failed write shows a status-bar text (a port
+    /// addition: the C has no error path); the slot keeps its previous file and name.</summary>
     private void HandleSave() => _saveLoad.Save(_objects, _board, _pl);
 
     /// <summary>loadgame() (L key / LOAD GAME, in a level or on the map): on success the loaded map replaces the running

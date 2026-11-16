@@ -49,6 +49,7 @@ public sealed class SaveLoadFlowTests : IDisposable
         public string? Name = "MY SAVE";
         public readonly List<(int Slot, string Existing)> NameAsks = new();
         public SaveLoadFlow Flow;
+        public readonly List<string> Notes = new();
 
         public Rig(UserDataStore store, int episode = 1)
         {
@@ -56,7 +57,8 @@ public sealed class SaveLoadFlowTests : IDisposable
             Hs = new HighScoreStore(store);
             Flow = new SaveLoadFlow(store, Hs, () => episode, Popups,
                 pick: (t, b) => { Picks.Add((t, b)); return Slot; },
-                askName: (s, e) => { NameAsks.Add((s, e)); return Name; });
+                askName: (s, e) => { NameAsks.Add((s, e)); return Name; },
+                notify: Notes.Add);
         }
     }
 
@@ -265,7 +267,7 @@ public sealed class SaveLoadFlowTests : IDisposable
     }
 
     [Fact]
-    public void FailedFileWriteStoresNoNameAndLeavesThePreviousSaveIntact()
+    public void FailedWriteToAnUnusedSlotStoresNoNameAndLeavesOtherSlotsIntact()
     {
         var h = Harness();
         var rig = new Rig(Store());
@@ -281,6 +283,78 @@ public sealed class SaveLoadFlowTests : IDisposable
         Assert.Equal("MY SAVE", ConfigFile.Load(Store(), 1).SaveNames[3]);
         Assert.Equal(before, File.ReadAllBytes(SlotFile(3)));
         Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));              // no temp litter
+        Assert.Equal(new[] { SaveLoadFlow.SaveFailedText }, rig4.Notes.ToArray());
+    }
+
+    [Fact]
+    public void FailedOverwriteOfAnExistingSlotKeepsItsFileAndOldNameAndTellsThePlayer()
+    {
+        if (!OperatingSystem.IsWindows()) return; // needs a lockable target; the move-failure seam is covered in SaveGamesFileTests
+        var h = Harness();
+        var rig = new Rig(Store()) { Name = "FIRST" };
+        Assert.True(rig.Flow.Save(h.Objects, h.Board, h.Pl));
+        byte[] before = File.ReadAllBytes(SlotFile(3));
+        h.Pl.Score = 999;
+        var rig2 = new Rig(Store()) { Name = "SECOND" };
+        using (new FileStream(SlotFile(3), FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.False(rig2.Flow.Save(h.Objects, h.Board, h.Pl));
+        Assert.Equal(before, File.ReadAllBytes(SlotFile(3)));
+        Assert.Equal("FIRST", ConfigFile.Load(Store(), 1).SaveNames[3]);
+        Assert.Equal(new[] { SaveLoadFlow.SaveFailedText }, rig2.Notes.ToArray());
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+    }
+
+    [Fact]
+    public void SaveFailureWithUnavailableStoreTellsThePlayer()
+    {
+        var h = Harness();
+        var rig = new Rig(UserDataStore.FromFolders(_ => ""));
+        Assert.False(rig.Flow.Save(h.Objects, h.Board, h.Pl));
+        Assert.Equal(new[] { SaveLoadFlow.SaveFailedText }, rig.Notes.ToArray());
+    }
+
+    [Fact]
+    public void ConfigWriteFailureAfterAGoodFileIsReportedAndKeptInMemory()
+    {
+        var h = Harness();
+        var rig = new Rig(Store());
+        // a directory where config.xr1 must go: the save file can be written, the name cannot be persisted
+        Directory.CreateDirectory(Path.Combine(_dir, "config.xr1"));
+        Assert.True(rig.Flow.Save(h.Objects, h.Board, h.Pl));
+        Assert.True(File.Exists(SlotFile(3)));
+        Assert.Equal(new[] { SaveLoadFlow.NameNotStoredText }, rig.Notes.ToArray());
+        Assert.Equal("MY SAVE", rig.Hs.Load(1).SaveNames[3]); // session-only copy, still listed this session
+    }
+
+    [Fact]
+    public void LoadFailureOfANamedSlotTellsThePlayerButAnEmptySlotAndEscStaySilent()
+    {
+        PlantSlot3(new byte[500]);
+        var rig = new Rig(Store());
+        Assert.Null(rig.Flow.Load());
+        Assert.Equal(new[] { SaveLoadFlow.LoadFailedText }, rig.Notes.ToArray());
+
+        var silent = new Rig(Store()) { Slot = 5 }; // empty name
+        Assert.Null(silent.Flow.Load());
+        silent.Slot = -1;
+        Assert.Null(silent.Flow.Load());
+        Assert.Empty(silent.Notes);
+    }
+
+    [Fact]
+    public void IsSaneRejectsHeroOffBoardAndNegativeNumInv()
+    {
+        var map = _set.LoadBoard("MAP");
+        Assert.True(SaveGames.IsSane(map));
+        foreach (var (x, y) in new[] { (-1, 10), (10, -1), (Board.W * 16, 10), (10, Board.H * 16) })
+        {
+            var b = map.Clone(); b.Objects[0].X = x; b.Objects[0].Y = y;
+            Assert.False(SaveGames.IsSane(b), $"hero at {x},{y}");
+        }
+        var neg = map.Clone(); neg.Player.NumInv = -1;
+        Assert.False(SaveGames.IsSane(neg));
+        var big = map.Clone(); big.Player.NumInv = 31;
+        Assert.False(SaveGames.IsSane(big));
     }
 
     // ---- loading: rejects hostile files without throwing (Review Focus 1) --------------------
