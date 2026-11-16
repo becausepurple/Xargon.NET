@@ -64,6 +64,9 @@ if (args.Length > 0 && args[0] == "--textinput")
 if (args.Length > 0 && args[0] == "--highscores")
     return DebugDump.DumpHighScores(int.Parse(args[1]), args[2], args.Length > 3 ? args[3] : null);
 
+if (args.Length > 0 && args[0] == "--inventory")
+    return DebugDump.DumpInventory(int.Parse(args[1]), args.Length > 2 ? args[2] : null);
+
 if (args.Length > 0 && args[0] == "--banner")
     return DebugDump.DumpBanner(int.Parse(args[1]), int.Parse(args[2]), args.Length > 3 ? args[3] : null);
 

@@ -40,6 +40,7 @@ public sealed class GameApp : IDisposable
     private readonly HashSet<SDL.Keycode> _keys = new();
     private readonly TickClock _clock = new(); // 18.2 Hz BIOS-tick pacing, as in the original loop
     private PopupWindows _popups = null!;       // blocking text-popup host (dotextmsg)
+    private InventoryWindow _inventory = null!;     // inv_win modal
     private HighScoreWindow _highScores = null!;   // printhi(0)/printhi(1) modals
     private HintFlags _hints = new();           // first-time hints, reset per episode mount
     private readonly HotkeyState _hot = new();  // granny/noise/debug + the F7/Z streak (process-lifetime globals in the C)
@@ -66,6 +67,7 @@ public sealed class GameApp : IDisposable
             _presenter, _clock, _controls, _keys, () => _quit = true, () => _quit);
         var nameInput = new TextInputBox(_screen, () => _text, _presenter, _clock, _controls, _keys,
             () => _quit = true, () => _quit, _window);
+        _inventory = new InventoryWindow(_screen, () => _shapes, () => _text, _presenter, _popups);
         _highScores = new HighScoreWindow(_screen, () => _shapes, () => _text, _presenter, _popups, nameInput,
             new HighScoreStore(UserDataStore.Default()), () => _episode);
 
@@ -367,8 +369,8 @@ public sealed class GameApp : IDisposable
     // TASK9: loadgame() (L key / LOAD GAME).
     private void HandleLoad() { }
 
-    // TASK10: inv_win() (Enter / ADDITIONAL INVENTORY).
-    private void HandleInventory() { }
+    /// <summary>inv_win() (Enter / ADDITIONAL INVENTORY): the window over the current frame, then rest(); the next level frame repaints.</summary>
+    private void HandleInventory() => _inventory.Show(InventoryCounts.From(_objects.InvCount));
 
     // TASK10: buymenu() (B key / BUY EXTRA ITEMS; silently ignored on the map).
     private void HandleBuy() { }

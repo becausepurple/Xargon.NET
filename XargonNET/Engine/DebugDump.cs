@@ -598,6 +598,37 @@ public static class DebugDump
         return 0;
     }
 
+    /// <summary>--inventory EP [png]: a level frame with the INVENTORY STATUS window over it (laser 3, fire 12, mapkey 2, icon 1+3).</summary>
+    public static int DumpInventory(int episode, string? outFile)
+    {
+        var set = AssetSet.Mount(AssetSet.FindAssetsDir(), episode);
+        var screen = new VgaScreen();
+        set.LoadPalette(screen);
+        var shapes = new ShapeManager(set.Graphics);
+        var text = new Ui.TextRenderer(shapes);
+        var board = set.LoadBoard("BOARD_01");
+        Objects.Effects.ApplyForBoard(screen, board);
+        var vp = new Viewport(0, 2, VgaScreen.Width, 158);
+        var objs = new Objects.ObjectManager(board, shapes, set.Info, screen, episode: episode) { Text = text };
+        _ = new Objects.Behaviors(objs);
+        objs.ReenterPlayer(1);
+        var player = new Objects.Player(objs, vp);
+        for (int t = 0; t < 30; t++) { objs.Gamecount++; player.Update(new Objects.Controls()); objs.UpdateObjects(vp); }
+        screen.Clear(248);
+        objs.DrawBack(screen, vp);
+        BoardRenderer.DrawBoard(screen, vp, board, set.Info, shapes);
+        objs.DrawFore(screen, vp);
+        player.Draw(screen, shapes);
+        Ui.Hud.Draw(screen, shapes, text, objs.Pl, objs.Status, objs.Gamecount);
+
+        var counts = new Ui.InventoryCounts(Laser: 3, Fire: 12, Rock: 0, MapKey: 2, Icon1: 1, Icon2: 0, Icon3: 1);
+        Ui.InventoryWindow.Render(screen, shapes, text, counts);
+        string outPath = outFile ?? Path.Combine(Directory.GetCurrentDirectory(), "inventory.png");
+        PngWriter.SaveScreen(outPath, screen);
+        Console.WriteLine($"wrote {outPath}  (ep{episode})");
+        return 0;
+    }
+
     /// <summary>--menu EP SEL: render the episode-selection screen to menu.png.</summary>
     public static int DumpMenu(int episode, int sel)
     {
