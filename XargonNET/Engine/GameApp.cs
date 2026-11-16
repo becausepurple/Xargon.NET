@@ -223,6 +223,17 @@ public sealed class GameApp : IDisposable
 
     // ---- Adventure: overworld map <-> platformer levels -----------------------------------
 
+    // TASK7: replace with the full game menu (RQSLIABGN, 9 items). Same window style as the real one, two items.
+    internal const string SkeletonGameMenuText =
+        "7    - GAME OPTIONS -    \r3RETURN TO GAME\r2QUIT GAME\r\r";
+    internal const string SkeletonGameMenuKeys = "RQ";
+
+    /// <summary>
+    /// Plays the adventure until the game ends. Contract with the main menu: returns normally (after the
+    /// win pages / high scores for Quit and Won) so the menu redraws; when the window is closed the quit
+    /// flag is latched and it returns immediately WITHOUT the high-score prompt (the app is exiting, so
+    /// nothing is shown or saved).
+    /// </summary>
     private void RunAdventure()
     {
         _pl = Assets.PlayerState.NewGame();
@@ -233,7 +244,11 @@ public sealed class GameApp : IDisposable
         AdoptWorld(_session.Load("MAP"));
         FadeIn();
 
-        while (_running && !_quit)
+        var debug = GameFlow.ParseDebug(Environment.GetEnvironmentVariable(GameFlow.DebugEnvVar));
+        var over = GameOver.None;
+        int ticks = 0;
+
+        while (_running && !_quit && over == GameOver.None)
         {
             while (SDL.PollEvent(out SDL.Event e))
             {
@@ -241,13 +256,20 @@ public sealed class GameApp : IDisposable
                 {
                     case SDL.EventType.Quit: _quit = true; return;
                     case SDL.EventType.KeyDown:
-                        if (e.Key.Key == SDL.Keycode.Escape) { FadeOut(); return; } // back to menu
+                        if (e.Key.Key is SDL.Keycode.Escape or SDL.Keycode.Q) // escape / 'Q' -> gamemenu()
+                        {
+                            if (RunGameMenu()) over = GameOver.Quit;
+                            if (_quit) return;
+                            break;
+                        }
                         if (e.Key.Key == SDL.Keycode.G) _clock.TicksPerFrame = 3 - _clock.TicksPerFrame; // granny mode
                         _keys.Add(e.Key.Key);
                         break;
                     case SDL.EventType.KeyUp: _keys.Remove(e.Key.Key); break;
                 }
+                if (over != GameOver.None) break;
             }
+            if (over != GameOver.None) break;
 
             _objects.Gamecount++;
             _controls.Poll(_keys);
@@ -267,11 +289,48 @@ public sealed class GameApp : IDisposable
                 _objects.UpdBotMsg(); // upd_botmsg(): after upd_objs(1), before refresh
                 if (_objects.NewLevel is not null) HandleTransition();
             }
+            over = GameFlow.PollGameWon(_objects); // checkpoint state 4: gameover=2
 
             DrawLevel();
             _presenter.Present(_screen);
             _clock.Wait();
+
+            ticks++;
+            if (over == GameOver.None && debug is { } d && ticks == d.AfterTicks) over = d.Reason; // env-var only
         }
+
+        if (over != GameOver.None && !_quit) RunGameEnd(over);
+    }
+
+    /// <summary>The temporary game menu (gamemenu): RETURN resumes play (keys cleared, clock reset); QUIT
+    /// GAME returns true (gameover=1, no confirmation). Closing the window latches the quit flag.</summary>
+    private bool RunGameMenu()
+    {
+        var menu = new Menu(SkeletonGameMenuText, SkeletonGameMenuKeys, 1, 2, 24, 9, 10, 24, 0);
+        int sel = 0;
+        char chosen = RunMenu(menu, 'R', ref sel, draw: (s, f) => DrawMenuFrame(menu, s, f));
+        _keys.Clear();
+        _clock.Reset();
+        return chosen == 'Q';
+    }
+
+    /// <summary>play() tail: [pageview(200) if won] then printhi(1), per <see cref="GameFlow.Plan"/>.</summary>
+    private void RunGameEnd(GameOver over)
+    {
+        var steps = GameFlow.Plan(over, demo: false);
+        if (steps.ShowWinPages && GameFlow.WinAnchor(_board) is not null)
+        {
+            FadeOut();
+            RunPageView(_board, _objects, GameFlow.WinPage); // live board; ends faded back in on a cleared screen
+        }
+        else if (steps.ShowWinPages) Console.WriteLine("Win pages skipped: no page-200 checkpoint on the live board.");
+        else
+        {
+            DrawLevel(); // drop the game-menu window before the table is drawn over the live frame
+            _presenter.Present(_screen);
+        }
+        if (_quit) return;
+        if (steps.ShowHighScores) _highScores.ShowAfterGame(_pl.Score); // the live score; no rollback
     }
 
     /// <summary>Bind the rendering/controller state to a freshly built world (the camera is already
@@ -370,7 +429,14 @@ public sealed class GameApp : IDisposable
         var objects = new ObjectManager(board, _shapes, _assets.Info, _screen, episode: _episode)
         { Text = _text, Popups = _popups, Hints = _hints };
         _ = new Behaviors(objects);
+        RunPageView(board, objects, startPage);
+    }
 
+    /// <summary>pageview(startPage) over an already-loaded (live) board and its objects, as the C does for the
+    /// win pages (page 200 onward over whatever board is loaded at game over). The screen must already be
+    /// faded out. A missing page skips gracefully.</summary>
+    private void RunPageView(Board board, ObjectManager objects, int startPage)
+    {
         int page = startPage;
         bool leave = false;
         while (!leave && !_quit)
