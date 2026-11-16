@@ -16,6 +16,9 @@ public readonly record struct DebugGameOver(GameOver Reason, int AfterTicks);
 public static class GameFlow
 {
     public const int WinPage = 200;
+
+    /// <summary>Status-bar text when a checkpoint names a board that cannot be entered. A port addition (the C would crash).</summary>
+    public const string LevelFailedText = "Could not enter that level.";
     public const string DebugEnvVar = "XARGON_DEBUG_GAMEOVER";
     public const int DebugDefaultTicks = 90;
 

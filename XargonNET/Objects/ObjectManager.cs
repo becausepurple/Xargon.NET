@@ -72,7 +72,7 @@ public sealed class ObjectManager
     /// <summary>dotextmsg(n, flg): raise a text popup (blocks until dismissed in the live game).</summary>
     public void TextMsg(int n, PopupStyle s = PopupStyle.Plain) => Popups.TextMessage(n, s);
 
-    /// <summary>dialogmsg(n, flg): raise a portrait dialog popup (Task 7).</summary>
+    /// <summary>dialogmsg(n, flg): raise a portrait dialog popup (hero or eagle face; blocks until dismissed in the live game).</summary>
     public void DialogMsg(int n, bool eagle) => Popups.DialogMessage(n, eagle);
 
     /// <summary>The current gameplay viewport origin (gamevp.vpox/vpoy) during an update pass — used by

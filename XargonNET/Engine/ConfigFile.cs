@@ -30,21 +30,44 @@ public sealed class ConfigFile
 
     private static bool ValidEpisode(int episode) => episode is >= 1 and <= 3;
 
-    /// <summary>Returns defaults for a missing, unreadable or wrong-length file. Never throws.</summary>
-    public static ConfigFile Load(UserDataStore store, int episode)
+    /// <summary>Why <see cref="TryLoad"/> returned what it did.</summary>
+    public enum LoadStatus
     {
-        if (!ValidEpisode(episode) || !store.IsAvailable) return new ConfigFile();
+        /// <summary>A valid 232-byte file was read.</summary>
+        Ok,
+        /// <summary>No store, invalid episode, or no file yet: defaults, and writing is safe.</summary>
+        Missing,
+        /// <summary>The file is not exactly 232 bytes: treated as corrupt (defaults); overwriting it is intended.</summary>
+        Corrupt,
+        /// <summary>The file exists but could not be read (lock, permissions): defaults, and writing would destroy real data.</summary>
+        ReadFailed,
+    }
+
+    /// <summary>Returns defaults for a missing, unreadable or wrong-length file. Never throws.</summary>
+    public static ConfigFile Load(UserDataStore store, int episode) =>
+        TryLoad(store, episode, out var c) == LoadStatus.Ok ? c : new ConfigFile();
+
+    /// <summary>Like <see cref="Load"/> but says why defaults came back. <paramref name="readAll"/> is a test seam for
+    /// <c>File.ReadAllBytes</c>. Never throws.</summary>
+    public static LoadStatus TryLoad(UserDataStore store, int episode, out ConfigFile config, Func<string, byte[]>? readAll = null)
+    {
+        config = new ConfigFile();
+        if (!ValidEpisode(episode) || !store.IsAvailable) return LoadStatus.Missing;
         try
         {
             var path = store.PathFor(FileNameFor(episode));
             var info = new FileInfo(path);
-            if (!info.Exists || info.Length != FileSize) return new ConfigFile();
-            return Parse(File.ReadAllBytes(path));
+            if (!info.Exists) return LoadStatus.Missing;
+            if (info.Length != FileSize) return LoadStatus.Corrupt;
+            var data = (readAll ?? File.ReadAllBytes)(path);
+            if (data.Length != FileSize) return LoadStatus.Corrupt;
+            config = Parse(data);
+            return LoadStatus.Ok;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
                                       or ArgumentException or System.Security.SecurityException)
         {
-            return new ConfigFile();
+            return LoadStatus.ReadFailed;
         }
     }
 
@@ -80,34 +103,20 @@ public sealed class ConfigFile
     }
 
     /// <summary>
-    /// Writes the file atomically (temp file in the same directory, then move over the target).
+    /// Writes the file atomically via <see cref="AtomicFile"/> (flushed temp file in the same directory, then move over the target).
     /// Returns false on an invalid episode or any IO failure; never throws.
     /// </summary>
     public bool Save(UserDataStore store, int episode)
     {
         if (!ValidEpisode(episode) || !store.IsAvailable) return false;
-        string? temp = null;
         try
         {
-            if (!store.EnsureDirectory()) return false;
-            var path = store.PathFor(FileNameFor(episode));
-            temp = store.PathFor($"config.xr{episode}.{Guid.NewGuid():N}.tmp");
-            File.WriteAllBytes(temp, ToBytes());
-            File.Move(temp, path, overwrite: true);
-            temp = null;
-            return true;
+            return store.EnsureDirectory() && AtomicFile.TryWrite(store.PathFor(FileNameFor(episode)), ToBytes());
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
                                       or ArgumentException or System.Security.SecurityException)
         {
             return false;
-        }
-        finally
-        {
-            if (temp is not null)
-            {
-                try { File.Delete(temp); } catch (Exception) { /* best effort */ }
-            }
         }
     }
 

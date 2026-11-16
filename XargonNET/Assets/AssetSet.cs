@@ -26,7 +26,14 @@ public sealed class AssetSet
         Text = text;
     }
 
-    public string PathFor(string baseName) => Path.Combine(Dir, $"{baseName}.XR{Episode}");
+    /// <summary>The file for a plain board/asset name. Anything that is not a plain name (separators, drive colons, rooted
+    /// paths, dots, NULs, over-long) is refused so a name can never leave <see cref="Dir"/>.</summary>
+    /// <exception cref="ArgumentException">The name is not a plain name.</exception>
+    public string PathFor(string baseName)
+    {
+        if (!BoardNames.IsPlain(baseName)) throw new ArgumentException("Not a plain board name.", nameof(baseName));
+        return Path.Combine(Dir, $"{baseName}.XR{Episode}");
+    }
 
     public static AssetSet Mount(string dir, int episode)
     {

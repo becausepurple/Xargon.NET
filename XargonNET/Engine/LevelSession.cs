@@ -160,17 +160,44 @@ public sealed class LevelSession
     /// map (saveboard) and snapshot the player (stats(1)), load the level board, restore+strip the
     /// snapshot (stats(0)), then p_reenter the hero at the level's checkpoint.
     /// </summary>
-    public World EnterLevel(string levelBoard, bool deferPalette = false)
-    {
-        // The putlevelmsg/donelevelmsg banner around this call is run by GameApp.HandleTransition.
-        _savedMap = _curBoard.Clone();   // saveboard(tempname)
-        _oPl = _pl.Clone();              // stats(1)
-        _completedLevel = _pl.Level;     // the level number the map checkpoint set
+    /// <exception cref="InvalidDataException">The level could not be entered (see <see cref="TryEnterLevel"/>).</exception>
+    public World EnterLevel(string levelBoard, bool deferPalette = false) =>
+        TryEnterLevel(levelBoard, out var w, deferPalette)
+            ? w
+            : throw new InvalidDataException($"Cannot enter level '{levelBoard}'.");
 
-        var w = Adopt(_load(levelBoard), levelBoard, deferPalette); // loadboard(newlevel)
+    /// <summary>
+    /// <see cref="EnterLevel"/> that reports failure instead of throwing. The name must be a plain board name
+    /// (<see cref="BoardNames.IsPlain"/>) and the board must load; the target is loaded and its world built BEFORE the
+    /// map is stashed or the player snapshotted, so on a false return nothing about the session changed.
+    /// </summary>
+    public bool TryEnterLevel(string levelBoard, out World world, bool deferPalette = false)
+    {
+        world = default;
+        if (!BoardNames.IsPlain(levelBoard)) return false;
+        World w;
+        Board? map; PlayerState snapshot; int completed;
+        try
+        {
+            var target = _load(levelBoard);                // loadboard(newlevel), tried first
+            map = _curBoard.Clone();                       // saveboard(tempname), taken before Adopt replaces _curBoard
+            snapshot = _pl.Clone();                        // stats(1)
+            completed = _pl.Level;                         // the level number the map checkpoint set
+            w = Adopt(target, levelBoard, deferPalette);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException
+                                      or NotSupportedException or System.Security.SecurityException)
+        {
+            return false;
+        }
+        // The putlevelmsg/donelevelmsg banner around this call is run by GameApp.HandleTransition.
+        _savedMap = map;
+        _oPl = snapshot;
+        _completedLevel = completed;
         Restore();                       // stats(0): restore the map pl (no-op) and strip per-level items
         ReenterAndFrame(w.Objects, _pl.Level);
-        return w;
+        world = w;
+        return true;
     }
 
     /// <summary>

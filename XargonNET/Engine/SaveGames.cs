@@ -82,7 +82,7 @@ public static class SaveGames
     /// <summary>
     /// Whether a parsed board can safely become the running game. Saves only ever come from the map, so: 1..256
     /// objects, object 0 is the map hero (<c>obj_tiny</c>) at a position on the board, every kind is a known kind,
-    /// the map checkpoint reads state 5 (see <see cref="GameFlow.IsMapBoard"/>) and the inventory count fits the
+    /// every checkpoint's inside text is a plain board name, <c>!</c>, a song marker or empty (<see cref="BoardNames"/>), the map checkpoint reads state 5 (see <see cref="GameFlow.IsMapBoard"/>) and the inventory count fits the
     /// 30-slot array. This also rejects a level board or another episode's garbage renamed to a save.
     /// </summary>
     public static bool IsSane(Board b)
@@ -93,7 +93,11 @@ public static class SaveGames
         if (hero.Kind != ObjectKind.Tiny) return false;
         if (hero.X < 0 || hero.X >= Board.W * 16 || hero.Y < 0 || hero.Y >= Board.H * 16) return false;
         foreach (var o in b.Objects)
+        {
             if (o.Kind >= KindDefs.Count) return false;
+            // A checkpoint's "inside" text becomes a board file name on the next transition: only the shipped shapes pass.
+            if (o.Kind == ObjectKind.Checkpt && !BoardNames.IsCheckpointInside(o.Inside)) return false;
+        }
         if (b.Player.NumInv < 0 || b.Player.NumInv > b.Player.Inv.Length) return false;
         return GameFlow.IsMapBoard(b.Objects);
     }

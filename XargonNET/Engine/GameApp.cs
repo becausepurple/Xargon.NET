@@ -212,13 +212,18 @@ public sealed class GameApp : IDisposable
             case 'L': // LOAD GAME: loadgame(), and on success play(0) from the loaded world (xargon.c:889-897)
             {
                 var saved = _saveLoad.Load();
-                if (saved is null) return MenuResult.Continue; // Esc, empty slot or unreadable file: the menu frame redraws itself
+                if (saved is null)
+                {
+                    // Esc / empty slot stay silent; a named slot that failed gets a popup (the status bar is not shown on the menu backdrop).
+                    if (_saveLoad.LastLoadFailed) AtBase(() => _popups.Notice(SaveLoadFlow.LoadFailedText));
+                    return MenuResult.Continue; // the menu frame redraws itself
+                }
                 FadeOut();
                 RunAdventure(saved);
                 return MenuResult.Redraw;
             }
-            default: // DEMO — not implemented yet
-                return MenuResult.Redraw;
+            default: // DEMO-PREVIEW - not implemented yet: nothing happens (Redraw would blink the screen black)
+                return MenuResult.Continue;
         }
     }
 
@@ -368,19 +373,19 @@ public sealed class GameApp : IDisposable
     {
         switch (action)
         {
-            case HotkeyAction.Help: _popups.TextMessage(1, PopupStyle.Plain); break;   // F1: dotextmsg(1,0)
-            case HotkeyAction.Pause: _popups.TextMessage(6, PopupStyle.Plain); break;  // P: dotextmsg(6,0)
+            case HotkeyAction.Help: AtBase(() => _popups.TextMessage(1, PopupStyle.Plain)); break;   // F1: dotextmsg(1,0)
+            case HotkeyAction.Pause: AtBase(() => _popups.TextMessage(6, PopupStyle.Plain)); break;  // P: dotextmsg(6,0)
             case HotkeyAction.Cheat:
-                _popups.TextMessage(5, PopupStyle.Plain); // the popup shows BEFORE the effects are applied
+                AtBase(() => _popups.TextMessage(5, PopupStyle.Plain)); // the popup shows BEFORE the effects are applied
                 if (!_quit) Hotkeys.ApplyCheat(_objects);
                 break;
             case HotkeyAction.ToggleGranny: _clock.TicksPerFrame = _hot.TicksPerFrame; break; // state flipped by Decide
             case HotkeyAction.ToggleNoise: break; // soundf only gates digitised SFX; no audio yet, state is stored
             case HotkeyAction.ToggleDebug: break; // debug only swaps the score field for coreleft() in the C: flag stored only
-            case HotkeyAction.Save: HandleSave(); break;
-            case HotkeyAction.Load: HandleLoad(); break;
-            case HotkeyAction.Buy: HandleBuy(); break;
-            case HotkeyAction.Inventory: HandleInventory(); break;
+            case HotkeyAction.Save: AtBase(HandleSave); break;
+            case HotkeyAction.Load: AtBase(HandleLoad); break;
+            case HotkeyAction.Buy: AtBase(HandleBuy); break;
+            case HotkeyAction.Inventory: AtBase(HandleInventory); break;
             case HotkeyAction.OpenGameMenu: return RunGameMenu() ? GameOver.Quit : GameOver.None;
         }
         return GameOver.None;
@@ -427,6 +432,8 @@ public sealed class GameApp : IDisposable
         finally { _clock.TicksPerFrame = saved; }
     }
 
+    private void AtBase(Action modal) => AtBaseRate(() => { modal(); return 0; });
+
     /// <summary>inv_win() (Enter / ADDITIONAL INVENTORY): the window over the current frame, then rest(); the next level frame repaints.</summary>
     private void HandleInventory() => _inventory.Show(InventoryCounts.From(_objects.InvCount));
 
@@ -462,6 +469,7 @@ public sealed class GameApp : IDisposable
     /// <summary>play() tail: [pageview(200) if won] then printhi(1), per <see cref="GameFlow.Plan"/>.</summary>
     private void RunGameEnd(GameOver over)
     {
+        _clock.TicksPerFrame = 1; // the win pages and high-score table run at the base rate whatever the granny pace
         var steps = GameFlow.Plan(over, demo: false);
         if (steps.ShowWinPages && GameFlow.WinAnchor(_board) is not null)
         {
@@ -494,7 +502,7 @@ public sealed class GameApp : IDisposable
     private void HandleTransition()
     {
         string nl = _objects.NewLevel!;
-        _objects.NewLevel = null;
+        _objects.NewLevel = null; // consumed first: a failed entry must not repeat every frame
         char c0 = nl.Length > 0 ? nl[0] : '\0';
         if (nl == "!")
         {
@@ -508,9 +516,14 @@ public sealed class GameApp : IDisposable
         else if (c0 is '#' or '*' or '&') { /* level song — Phase 7 audio */ }
         else
         {
-            // putlevelmsg(pl.level) (set by the map checkpoint); saveboard/loadboard; donelevelmsg().
+            // saveboard/loadboard (tried first, silently: the screen only changes in DrawLevel), then putlevelmsg(pl.level)
+            // (set by the map checkpoint) and donelevelmsg(). An unknown/invalid board leaves the current world as it is.
+            if (!_session.TryEnterLevel(nl, out var w, deferPalette: true))
+            {
+                _objects.Txt(GameFlow.LevelFailedText, 5, 0);
+                return;
+            }
             long t0 = _popups.ShowLevelBanner(_episode, _pl.Level);
-            var w = _session.EnterLevel(nl, deferPalette: true);
             _popups.WaitLevelBanner(t0);
             _session.ApplyPendingPalette();
             AdoptWorld(w);

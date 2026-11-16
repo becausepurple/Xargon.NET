@@ -17,7 +17,7 @@ public interface IPopupHost
     /// <summary>dotextmsg(n, flg): a scrolling/short text popup in the plain or dialog style.</summary>
     void TextMessage(int n, PopupStyle style);
 
-    /// <summary>dialogmsg(n, flg): a portrait dialog popup (hero or eagle face). Implemented in Task 7.</summary>
+    /// <summary>dialogmsg(n, flg): a portrait dialog popup (hero or eagle face): a short popup with a face beside the text.</summary>
     void DialogMessage(int n, bool eagle);
 }
 

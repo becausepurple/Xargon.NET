@@ -27,6 +27,9 @@ public sealed class SaveLoadFlow
         NameNotStoredText = "Saved, but the slot name was not stored.",
         LoadFailedText = "Could not load that game.";
 
+    /// <summary>True when the last <see cref="Load"/> returned null because a NAMED slot could not be read (not for Esc or an empty slot).</summary>
+    public bool LastLoadFailed { get; private set; }
+
     private readonly UserDataStore _store;
     private readonly HighScoreStore _cfg;
     private readonly Func<int> _episode;
@@ -89,12 +92,13 @@ public sealed class SaveLoadFlow
     /// </summary>
     public Board? Load()
     {
+        LastLoadFailed = false;
         int slot = _pick(LoadTitle, LoadBlank);
         if ((uint)slot >= SaveGames.Slots) return null;
         int episode = _episode();
         if (_cfg.Load(episode).SaveNames[slot].Length == 0) return null;
         var board = SaveGames.TryRead(_store, episode, slot);
-        if (board is null) _notify(LoadFailedText); // a NAMED slot that cannot be loaded; an empty slot stays silent as in the C
+        if (board is null) { LastLoadFailed = true; _notify(LoadFailedText); } // a NAMED slot that cannot be loaded; an empty slot stays silent as in the C
         return board;
     }
 

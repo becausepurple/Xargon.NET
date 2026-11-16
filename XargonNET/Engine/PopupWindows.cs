@@ -275,6 +275,17 @@ public sealed class PopupWindows : IPopupHost
         Dismiss();
     }
 
+    /// <summary>A one-line notice in the plain popup window, dismissed like a short text popup. Port addition for
+    /// messages the original text bank does not have.</summary>
+    public void Notice(string line)
+    {
+        if (QuitLatched) return;
+        var msg = new TextMessage(System.Text.Encoding.ASCII.GetBytes("7NOTICE\r7" + line + "\r"));
+        RenderInto(_screen, _shapes(), _text(), msg, PopupStyle.Plain, 0);
+        RunShort();
+        Dismiss();
+    }
+
     /// <summary>dialogmsg(n, flg): the portrait dialog popup (hero or eagle face), short form only.</summary>
     public void DialogMessage(int n, bool eagle)
     {

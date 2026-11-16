@@ -42,6 +42,14 @@ internal sealed class LevelHarness
     }
 
     public void Enter(string board) => Adopt(Session.EnterLevel(board));
+    /// <summary>GameApp.HandleTransition's level branch: a failed entry keeps the current world and shows the status text.</summary>
+    public bool TryEnter(string board)
+    {
+        if (Session.TryEnterLevel(board, out var w)) { Adopt(w); return true; }
+        Objects.Txt(GameFlow.LevelFailedText, 5, 0);
+        return false;
+    }
+
     public void ExitToMap() => Adopt(Session.ExitToMap());
     public void LoadSaved(Board b, PlayerState pl) => Adopt(Session.LoadSaved(b, pl));
 
@@ -72,7 +80,7 @@ internal sealed class LevelHarness
             Objects.NewLevel = null;
             char c0 = nl.Length > 0 ? nl[0] : '\0';
             if (nl == "!") ExitToMap();
-            else if (c0 is not ('#' or '*' or '&')) Enter(nl);
+            else if (c0 is not ('#' or '*' or '&')) TryEnter(nl);
         }
     }
 

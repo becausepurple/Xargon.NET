@@ -69,16 +69,29 @@ public sealed class HighScoreStore
 {
     private readonly UserDataStore _store;
     private readonly Dictionary<int, ConfigFile> _sessionOnly = new();
+    private readonly HashSet<int> _readFailed = new(); // episodes whose config exists but could not be read: never overwrite it
+    private readonly Func<string, byte[]>? _readAll;
 
-    public HighScoreStore(UserDataStore store) => _store = store;
+    /// <param name="readAll">Test seam for the file read (default <c>File.ReadAllBytes</c>).</param>
+    public HighScoreStore(UserDataStore store, Func<string, byte[]>? readAll = null)
+    {
+        _store = store;
+        _readAll = readAll;
+    }
 
-    public ConfigFile Load(int episode) =>
-        _sessionOnly.TryGetValue(episode, out var kept) ? kept : ConfigFile.Load(_store, episode);
+    public ConfigFile Load(int episode)
+    {
+        if (_sessionOnly.TryGetValue(episode, out var kept)) return kept;
+        var status = ConfigFile.TryLoad(_store, episode, out var cfg, _readAll);
+        if (status == ConfigFile.LoadStatus.ReadFailed) _readFailed.Add(episode); else _readFailed.Remove(episode);
+        return cfg;
+    }
 
-    /// <summary>savecfg(). Returns false when it could not be persisted (the table stays in memory).</summary>
+    /// <summary>savecfg(). Returns false when it could not be persisted (the table stays in memory). When the last read
+    /// of an existing file FAILED (a transient lock) the defaults shown are not the real scores, so nothing is written.</summary>
     public bool Save(int episode, ConfigFile cfg)
     {
-        if (cfg.Save(_store, episode))
+        if (!_readFailed.Contains(episode) && cfg.Save(_store, episode))
         {
             _sessionOnly.Remove(episode);
             return true;
