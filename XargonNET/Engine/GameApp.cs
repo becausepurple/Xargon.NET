@@ -42,6 +42,8 @@ public sealed class GameApp : IDisposable
     private PopupWindows _popups = null!;       // blocking text-popup host (dotextmsg)
     private InventoryWindow _inventory = null!;     // inv_win modal
     private HighScoreWindow _highScores = null!;   // printhi(0)/printhi(1) modals
+    private TextInputBox _nameInput = null!;       // winput modal (high-score and save-slot names)
+    private SaveLoadFlow _saveLoad = null!;        // savegame()/loadgame() decisions over the slot window
     private HintFlags _hints = new();           // first-time hints, reset per episode mount
     private readonly HotkeyState _hot = new();  // granny/noise/debug + the F7/Z streak (process-lifetime globals in the C)
 
@@ -65,11 +67,20 @@ public sealed class GameApp : IDisposable
         // lazily so it stays correct across episode mounts, and composes over the live _screen.
         _popups = new PopupWindows(_screen, () => _shapes, () => _text, () => _assets.Text,
             _presenter, _clock, _controls, _keys, () => _quit = true, () => _quit);
-        var nameInput = new TextInputBox(_screen, () => _text, _presenter, _clock, _controls, _keys,
+        _nameInput = new TextInputBox(_screen, () => _text, _presenter, _clock, _controls, _keys,
             () => _quit = true, () => _quit, _window);
         _inventory = new InventoryWindow(_screen, () => _shapes, () => _text, _presenter, _popups);
-        _highScores = new HighScoreWindow(_screen, () => _shapes, () => _text, _presenter, _popups, nameInput,
-            new HighScoreStore(UserDataStore.Default()), () => _episode);
+        // One process-wide per-user store and read-modify-write config holder: high scores and save-slot names share
+        // config.xrE, so every writer goes through this HighScoreStore (a name can never clobber the scores).
+        var userStore = UserDataStore.Default();
+        var configStore = new HighScoreStore(userStore);
+        _highScores = new HighScoreWindow(_screen, () => _shapes, () => _text, _presenter, _popups, _nameInput,
+            configStore, () => _episode);
+        var slotWindow = new SaveLoadWindow(_screen, () => _shapes, () => _text, _presenter, _clock, _controls, _keys,
+            () => _quit = true, () => _quit, () => configStore.Load(_episode).SaveNames);
+        _saveLoad = new SaveLoadFlow(userStore, configStore, () => _episode, _popups,
+            pick: (title, blank) => AtBaseRate(() => slotWindow.Pick(title, blank)),
+            askName: (slot, existing) => AtBaseRate(() => AskSaveName(slot, existing)));
 
         try
         {
@@ -197,7 +208,15 @@ public sealed class GameApp : IDisposable
             case 'H': // HIGH SCORES -> printhi(0): the table over the menu, then rest()
                 _highScores.Show();
                 return MenuResult.Redraw;
-            default: // LOAD/DEMO — not implemented yet
+            case 'L': // LOAD GAME: loadgame(), and on success play(0) from the loaded world (xargon.c:889-897)
+            {
+                var saved = _saveLoad.Load();
+                if (saved is null) return MenuResult.Continue; // Esc, empty slot or unreadable file: the menu frame redraws itself
+                FadeOut();
+                RunAdventure(saved);
+                return MenuResult.Redraw;
+            }
+            default: // DEMO — not implemented yet
                 return MenuResult.Redraw;
         }
     }
@@ -223,21 +242,24 @@ public sealed class GameApp : IDisposable
     /// flag is latched and it returns immediately WITHOUT the high-score prompt (the app is exiting, so
     /// nothing is shown or saved).
     /// </summary>
-    private void RunAdventure()
+    private void RunAdventure(Board? loaded = null)
     {
         _clock.TicksPerFrame = _hot.TicksPerFrame; // granny survives across play sessions (a global in the C)
-        try { RunAdventureLoop(); }
+        try { RunAdventureLoop(loaded); }
         finally { _clock.TicksPerFrame = 1; } // menus/popups outside play run at the base rate
     }
 
-    private void RunAdventureLoop()
+    /// <param name="loaded">A validated save chosen by the main menu's LOAD GAME: play starts from it (no p_reenter)
+    /// instead of a fresh map.</param>
+    private void RunAdventureLoop(Board? loaded)
     {
         _pl = Assets.PlayerState.NewGame();
         _pl.Level = LevelSession.MapLevel;
         _session = new LevelSession(name => _assets.LoadBoard(name.ToUpperInvariant()),
             _shapes, _assets.Info, _screen, _gameVp, _pl, _text, _episode)
         { Popups = _popups, Hints = _hints };
-        AdoptWorld(_session.Load("MAP"));
+        AdoptWorld(loaded is null ? _session.Load("MAP") : _session.LoadSaved(loaded, loaded.Player));
+        if (loaded is not null) DrawLevel(); // drawboard() before fadein: the screen still holds the menu frame
         FadeIn();
 
         var debug = GameFlow.ParseDebug(Environment.GetEnvironmentVariable(GameFlow.DebugEnvVar));
@@ -363,11 +385,46 @@ public sealed class GameApp : IDisposable
         return GameOver.None;
     }
 
-    // TASK8: savegame() (S key / SAVE GAME): allowed only when the map/level checkpoint state permits, else message 4.
-    private void HandleSave() { }
+    /// <summary>savegame() (S key / SAVE GAME): only on the map (else message 4), slot window, then the name typed into the
+    /// chosen row. The next frame repaints over the window (moddrawboard). A failed write is silent: the C has no error
+    /// path and no text exists for one; the slot keeps its previous file and name.</summary>
+    private void HandleSave() => _saveLoad.Save(_objects, _board, _pl);
 
-    // TASK9: loadgame() (L key / LOAD GAME).
-    private void HandleLoad() { }
+    /// <summary>loadgame() (L key / LOAD GAME, in a level or on the map): on success the loaded map replaces the running
+    /// world (a level in progress is discarded). The C order is init_colors, fadeout, ..., fadein; here the fade-out
+    /// comes first so the old frame does not flash in the new palette. On Esc, an empty slot or an unreadable file
+    /// nothing changes and the next frame repaints over the window.</summary>
+    private void HandleLoad()
+    {
+        var saved = _saveLoad.Load();
+        if (saved is null || _quit) return;
+        FadeOut();
+        AdoptWorld(_session.LoadSaved(saved, saved.Player)); // init_colors + setorigin inside; no p_reenter
+        // AUDIO: dolevelsong() - start the loaded map's song once the audio plan lands.
+        DrawLevel();                                          // statwin/drawstats/drawboard
+        FadeIn();
+        _clock.Reset();
+    }
+
+    /// <summary>The save-name field: nine spaces white on colour 1 over the chosen row, then winput with the existing name
+    /// pre-filled. Esc cancels (plan ruling 2). Null = cancelled or window closed.</summary>
+    private string? AskSaveName(int slot, string existing)
+    {
+        var vp = SaveLoadWindow.Frame().Inside;
+        int y = SaveLoadWindow.RowY(slot);
+        _text.Draw(_screen, vp, SaveLoadWindow.NameX, y, SaveLoadWindow.Font, 7, 1, new string(' ', SaveLoadFlow.NameMaxLen));
+        return _nameInput.Run(vp, SaveLoadWindow.NameX, y, SaveLoadWindow.Font, existing, SaveLoadFlow.NameMaxLen,
+            SaveLoadFlow.NameEscCommits, hi: 7, back: 1);
+    }
+
+    /// <summary>Run a modal at the base 1-tick pace whatever the granny setting, then restore the pace.</summary>
+    private T AtBaseRate<T>(Func<T> modal)
+    {
+        int saved = _clock.TicksPerFrame;
+        _clock.TicksPerFrame = 1;
+        try { return modal(); }
+        finally { _clock.TicksPerFrame = saved; }
+    }
 
     /// <summary>inv_win() (Enter / ADDITIONAL INVENTORY): the window over the current frame, then rest(); the next level frame repaints.</summary>
     private void HandleInventory() => _inventory.Show(InventoryCounts.From(_objects.InvCount));

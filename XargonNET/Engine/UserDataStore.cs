@@ -13,12 +13,12 @@ public sealed class UserDataStore
     /// <summary>False when no safe per-user directory exists: Load yields defaults, writes fail.</summary>
     public bool IsAvailable => Root is not null;
 
-    /// <summary>Explicit root; must be an absolute path (a relative one could land in the game-data folder or repo).</summary>
+    /// <summary>Explicit root; must be fully qualified (a relative, drive-relative "C:foo" or root-relative "/foo" path could land in the game-data folder or repo).</summary>
     public UserDataStore(string root)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
-        if (!Path.IsPathRooted(root))
-            throw new ArgumentException("User data root must be an absolute path.", nameof(root));
+        if (!Path.IsPathFullyQualified(root))
+            throw new ArgumentException("User data root must be a fully qualified path.", nameof(root));
         Root = root;
     }
 
@@ -38,10 +38,10 @@ public sealed class UserDataStore
         try
         {
             var local = getFolder(Environment.SpecialFolder.LocalApplicationData);
-            if (!string.IsNullOrWhiteSpace(local) && Path.IsPathRooted(local))
+            if (!string.IsNullOrWhiteSpace(local) && Path.IsPathFullyQualified(local))
                 return new UserDataStore(Path.Combine(local, "XargonNET"));
             var profile = getFolder(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(profile) && Path.IsPathRooted(profile))
+            if (!string.IsNullOrWhiteSpace(profile) && Path.IsPathFullyQualified(profile))
                 return new UserDataStore(Path.Combine(profile, ".xargonnet"));
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or PlatformNotSupportedException

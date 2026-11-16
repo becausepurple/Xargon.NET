@@ -97,6 +97,29 @@ public sealed class ConfigFileTests : IDisposable
     public void FromFoldersRejectsRelativeFolderValues() =>
         Assert.False(UserDataStore.FromFolders(_ => "relative").IsAvailable);
 
+    // Task 10 carry-over: IsPathFullyQualified rejects drive-relative and root-relative values on every platform.
+    [Theory]
+    [InlineData(@"C:foo")]
+    [InlineData(@"C:")]
+    [InlineData(@"\foo")]
+    [InlineData(@"\")]
+    [InlineData(@"foo\bar")]
+    public void CtorRejectsPartiallyQualifiedRoots(string root) =>
+        Assert.Throws<ArgumentException>(() => new UserDataStore(root));
+
+    [Theory]
+    [InlineData(@"C:foo")]
+    [InlineData(@"C:")]
+    [InlineData(@"\foo")]
+    [InlineData(@"relative")]
+    public void FromFoldersRejectsPartiallyQualifiedFolderValues(string value)
+    {
+        Assert.False(UserDataStore.FromFolders(_ => value).IsAvailable);
+        // a bad LocalApplicationData falls through to a good UserProfile
+        var s = UserDataStore.FromFolders(f => f == Environment.SpecialFolder.LocalApplicationData ? value : Abs);
+        Assert.Equal(Path.Combine(Abs, ".xargonnet", "x"), s.PathFor("x"));
+    }
+
     [Fact]
     public void FromFoldersBothEmptyGivesUnavailableStore()
     {

@@ -598,6 +598,45 @@ public static class DebugDump
         return 0;
     }
 
+    /// <summary>--saveload EP save|load|entry [png]: the slot window over the map frame with sample names. save = SAVE GAME
+    /// (cursor on slot 3), load = LOAD GAME with the blank text, entry = the name-entry state (white-on-1 field, typed
+    /// text, cursor glyph) on slot 3.</summary>
+    public static int DumpSaveLoad(int episode, string mode, string? outFile)
+    {
+        var set = AssetSet.Mount(AssetSet.FindAssetsDir(), episode);
+        var screen = new VgaScreen();
+        set.LoadPalette(screen);
+        var shapes = new ShapeManager(set.Graphics);
+        var text = new Ui.TextRenderer(shapes);
+        var vp = new Viewport(0, 2, VgaScreen.Width, 158);
+        var pl = PlayerState.NewGame();
+        pl.Level = LevelSession.MapLevel;
+        var session = new LevelSession(n => set.LoadBoard(n.ToUpperInvariant()), shapes, set.Info, screen, vp, pl, text, episode);
+        var w = session.Load("MAP");
+        screen.Clear(248);
+        w.Objects.DrawBack(screen, vp);
+        BoardRenderer.DrawBoard(screen, vp, w.Board, set.Info, shapes);
+        w.Objects.DrawFore(screen, vp);
+        Ui.Hud.Draw(screen, shapes, text, w.Objects.Pl, w.Objects.Status, w.Objects.Gamecount);
+
+        string[] names = { "ALPHA", "", "MY SAVE", "WWWWWWWWW", "", "x", "LAST ONE" };
+        bool load = mode == "load";
+        var win = Ui.SaveLoadWindow.Render(screen, shapes, text, load ? "LOAD GAME" : "SAVE GAME", names,
+            load ? "<empty>" : "", 2, Ui.SaveLoadWindow.CursorGlyphAt(5));
+        if (mode == "entry")
+        {
+            // savegame(): the cursor is erased, 9 spaces white on 1 over the row, then winput with the typed text.
+            Ui.SaveLoadWindow.DrawCursor(screen, text, win.Inside, -1, 0);
+            text.Draw(screen, win.Inside, Ui.SaveLoadWindow.NameX, Ui.SaveLoadWindow.RowY(2), Ui.SaveLoadWindow.Font, 7, 1, new string(' ', 9));
+            Ui.TextInputBox.Render(screen, text, win.Inside, Ui.SaveLoadWindow.NameX, Ui.SaveLoadWindow.RowY(2),
+                Ui.SaveLoadWindow.Font, 7, 1, "NEW NAME", 9, 3);
+        }
+        string outPath = outFile ?? Path.Combine(Directory.GetCurrentDirectory(), "saveload.png");
+        PngWriter.SaveScreen(outPath, screen);
+        Console.WriteLine($"wrote {outPath}  (ep{episode} {mode})");
+        return 0;
+    }
+
     /// <summary>--inventory EP [png]: a level frame with the INVENTORY STATUS window over it (laser 3, fire 12, mapkey 2, icon 1+3).</summary>
     public static int DumpInventory(int episode, string? outFile)
     {

@@ -38,7 +38,18 @@ public static class GameFlow
     /// <summary>The C's map test <c>objs[findcheckpt(0)].state==5</c> (gamemenu save/buy, xargon.c:1078/1105): true on
     /// the overworld map. Quirk kept: <c>findcheckpt</c> returns 0 when the board has no checkpoint 0, so the test
     /// then reads the HERO's state (objs[0]).</summary>
-    public static bool IsOnMap(ObjectManager objects) => objects.Obj(objects.FindCheckpt(0)).State == 5;
+    public static bool IsOnMap(ObjectManager objects) => IsMapBoard(objects.Objects);
+
+    /// <summary>The same test over a plain object list (a parsed save, before it is a world): <c>findcheckpt(0)</c> = the
+    /// first checkpoint with counter 0, else object 0, and that object's state must be 5. An empty list is not a map.</summary>
+    public static bool IsMapBoard(IReadOnlyList<Obj> objs)
+    {
+        if (objs.Count == 0) return false;
+        int c = 0;
+        for (int i = 0; i < objs.Count; i++)
+            if (objs[i].Kind == ObjectKind.Checkpt && objs[i].Counter == 0) { c = i; break; }
+        return objs[c].State == 5;
+    }
 
     /// <summary>Parses XARGON_DEBUG_GAMEOVER: <c>won</c> | <c>quit</c>, optionally <c>@TICKS</c>
     /// (default <see cref="DebugDefaultTicks"/>). Anything else yields null (no trigger).</summary>
