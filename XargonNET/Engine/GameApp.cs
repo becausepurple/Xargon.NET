@@ -40,6 +40,7 @@ public sealed class GameApp : IDisposable
     private readonly HashSet<SDL.Keycode> _keys = new();
     private readonly TickClock _clock = new(); // 18.2 Hz BIOS-tick pacing, as in the original loop
     private PopupWindows _popups = null!;       // blocking text-popup host (dotextmsg)
+    private HighScoreWindow _highScores = null!;   // printhi(0)/printhi(1) modals
     private HintFlags _hints = new();           // first-time hints, reset per episode mount
 
     public bool Init()
@@ -62,6 +63,10 @@ public sealed class GameApp : IDisposable
         // lazily so it stays correct across episode mounts, and composes over the live _screen.
         _popups = new PopupWindows(_screen, () => _shapes, () => _text, () => _assets.Text,
             _presenter, _clock, _controls, _keys, () => _quit = true, () => _quit);
+        var nameInput = new TextInputBox(_screen, () => _text, _presenter, _clock, _controls, _keys,
+            () => _quit = true, () => _quit, _window);
+        _highScores = new HighScoreWindow(_screen, () => _shapes, () => _text, _presenter, _popups, nameInput,
+            new HighScoreStore(UserDataStore.Default()), () => _episode);
 
         try
         {
@@ -188,7 +193,10 @@ public sealed class GameApp : IDisposable
             case 'E': // EXIT
                 FadeOut();
                 return false;
-            default: // LOAD/DEMO/HIGH — not implemented yet
+            case 'H': // HIGH SCORES -> printhi(0): the table over the menu, then rest()
+                _highScores.Show();
+                return true;
+            default: // LOAD/DEMO — not implemented yet
                 return true;
         }
     }

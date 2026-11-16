@@ -59,6 +59,31 @@ public sealed class PopupWindows : IPopupHost
     public static bool IsReleaseBlocking(PopupInput k) => k is PopupInput.Up or PopupInput.Down
         or PopupInput.Space or PopupInput.Enter or PopupInput.Escape or PopupInput.Fire1 or PopupInput.Fire2;
 
+    /// <summary>rest() dismissal (xargon.c:516): Esc, Enter, Space, either fire button or a direction.
+    /// Any other key (letters) does not dismiss.</summary>
+    public static bool RestDismisses(PopupInput k) => k is PopupInput.Escape or PopupInput.Enter
+        or PopupInput.Space or PopupInput.Fire1 or PopupInput.Fire2 or PopupInput.Up or PopupInput.Down;
+
+    /// <summary>rest()'s initial wait loops while a key/fire/direction is held; the same held-key set as the other popups.</summary>
+    public static bool RestBlocks(PopupInput k) => IsReleaseBlocking(k);
+
+    /// <summary>rest(): wait until every key/fire/direction is released, then block until
+    /// <see cref="RestDismisses"/>; on exit clear held keys, reset the clock and mask fire (as the C's
+    /// trailing <c>key=0; fire1off=1; fire2off=1</c>). Returns at once if a window close is already latched.</summary>
+    internal void Rest()
+    {
+        if (QuitLatched) return;
+        bool released = false;
+        while (!released && !_quit) { Pump(countRepeats: false); released = !AnyBlockingHeld(); FrameTick(); }
+        bool done = false;
+        while (!done && !_quit)
+        {
+            foreach (var k in Pump(countRepeats: false)) if (RestDismisses(k)) done = true;
+            FrameTick();
+        }
+        Dismiss();
+    }
+
     /// <summary>The scroll step a logical input requests (Up/Left/PgUp = up a line, Down/Right/PgDn = down).</summary>
     public static ScrollKey ToScroll(PopupInput k) => k switch
     {

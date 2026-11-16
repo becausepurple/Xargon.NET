@@ -528,6 +528,40 @@ public static class DebugDump
         return 0;
     }
 
+    /// <summary>--highscores EP table|entry [png]: the HIGH SCORES window over the INTRO board with a sample table;
+    /// "entry" inserts a new score at row 3 and shows the name-entry state (white-on-1 field, typed text, cursor).</summary>
+    public static int DumpHighScores(int episode, string mode, string? outFile)
+    {
+        var set = AssetSet.Mount(AssetSet.FindAssetsDir(), episode);
+        var screen = new VgaScreen();
+        set.LoadPalette(screen);
+        var shapes = new ShapeManager(set.Graphics);
+        var text = new Ui.TextRenderer(shapes);
+        var board = set.LoadBoard("INTRO");
+        Objects.Effects.ApplyForBoard(screen, board);
+        var vp = new Viewport(0, 2, VgaScreen.Width, 158);
+        screen.Clear(248);
+        BoardRenderer.DrawBoard(screen, vp, board, set.Info, shapes);
+
+        var cfg = new ConfigFile();
+        string[] names = { "ZED", "MARIA", "XARGON", "ABCDEFGH", "KIM", "", "BOB", "T", "QWERTYUI", "LAST" };
+        uint[] scores = { 1234567, 456789, 98765, 43210, 9876, 1234, 567, 89, 7, 0 };
+        for (int i = 0; i < 10; i++) { cfg.HiNames[i] = names[i]; cfg.HiScores[i] = scores[i]; }
+        var table = new HighScoreTable(cfg);
+        bool entry = mode == "entry";
+        int row = -1;
+        if (entry) { row = table.Qualifies(50000); table.Insert(row, "", 50000); }
+        var win = Ui.HighScoreWindow.Render(screen, shapes, text, table, row);
+        if (entry)
+            Ui.TextInputBox.Render(screen, text, win.Inside, Ui.HighScoreWindow.NameX, Ui.HighScoreWindow.RowY(row),
+                Ui.HighScoreWindow.Font, 7, 1, "JOE", HighScoreTable.MaxNameLen, 3);
+
+        string outPath = outFile ?? Path.Combine(Directory.GetCurrentDirectory(), "highscores.png");
+        PngWriter.SaveScreen(outPath, screen);
+        Console.WriteLine($"wrote {outPath}  (ep{episode} {mode} row={row})");
+        return 0;
+    }
+
     /// <summary>--banner EP LEVEL [png]: render a level frame, then the putlevelmsg banner over it.</summary>
     public static int DumpBanner(int episode, int level, string? outFile)
     {
