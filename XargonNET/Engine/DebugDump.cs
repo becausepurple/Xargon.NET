@@ -354,6 +354,7 @@ public static class DebugDump
         objs.DrawBack(screen, vp);
         BoardRenderer.DrawBoard(screen, vp, board, set.Info, shapes);
         objs.DrawFore(screen, vp);
+        Ui.Hud.DrawOpening(screen, shapes, textR); // statwin(0): the opening screen's bottom display
 
         var menu = new Ui.Menu(GameApp.MainMenuText, GameApp.MainMenuKeys, 1, 8, 24, 11, 8, 24, 1);
         menu.Draw(screen, textR, shapes, sel, 0);

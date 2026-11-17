@@ -57,6 +57,25 @@ public static class Hud
         text.Draw(screen, TextVp, 148 - status.Message.Length * 3, 1, TextRenderer.Font6, hi, 121, status.Message);
     }
 
+    /// <summary>
+    /// The bottom display of the opening/menu screen (statwin(0), xargon.c:130-163): the same frame as the
+    /// in-game bar, but the bar itself holds ten pieces of opening-screen art (shapes 0x2100..0x2109 in
+    /// statvp) and the centred caption "THE XARGON TRILOGY" in colour 6 on the status background.
+    /// </summary>
+    public static void DrawOpening(VgaScreen screen, ShapeManager shapes, TextRenderer text)
+    {
+        FillRect(screen, StatVp, 121);
+        int num = 0;
+        for (int x = 0; x < 289; x += 32) shapes.DrawShape(screen, StatVp, 0x2100 + num++, x, 0);
+        shapes.DrawShape(screen, MainVp, 0x1e0a, 0, 188);
+        for (int x = 32; x < 257; x += 32) shapes.DrawShape(screen, MainVp, 0x1e0b, x, 188);
+        shapes.DrawShape(screen, MainVp, 0x1e0c, 288, 188);
+
+        const string caption = "THE XARGON TRILOGY";
+        FillRect(screen, TextVp, 121);
+        text.Draw(screen, TextVp, 148 - caption.Length * 3, 1, TextRenderer.Font6, 6, 121, caption);
+    }
+
     private static void FillRect(VgaScreen screen, Viewport vp, byte color)
     {
         int y1 = Math.Min(vp.Y + vp.H, VgaScreen.Height);

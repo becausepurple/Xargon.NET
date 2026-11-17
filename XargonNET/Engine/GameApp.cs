@@ -665,6 +665,10 @@ public sealed class GameApp : IDisposable
             Hud.Draw(_screen, _shapes, _text, _objects.Pl, _objects.Status, _objects.Gamecount); // status bar in the map/levels
             _objects.HeroColorFlashPost(_screen); // refresh() tail: step/flash the hurt-flash counter
         }
+        else
+        {
+            Hud.DrawOpening(_screen, _shapes, _text); // statwin(0): the opening/menu screen's bottom display
+        }
     }
 
     // ---- Fades ----------------------------------------------------------------------------
