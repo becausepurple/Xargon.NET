@@ -115,3 +115,46 @@ public class MapTests
         Assert.Equal(sy, w.Obj(0).Y);
     }
 }
+
+public class MapLevelMarkerTests
+{
+    /// <summary>The colour-240 pixels of the level X (shape 16) show whether the flashing frame is drawn.</summary>
+    private static int FlashPixels(ObjectManager w, int x, int y)
+    {
+        var vp = TestWorld.Vp;
+        vp.W = 24; vp.H = 24; // only this icon: other X's on the map must not be in view
+        vp.OriginX = x - 8; vp.OriginY = y - 8 - vp.Y;
+        Array.Fill(w.Screen.Pixels, (byte)0);
+        w.DrawFore(w.Screen, vp);
+        return w.Screen.Pixels.Count(p => p == 240);
+    }
+
+    private static int FindX(ObjectManager w, int level)
+    {
+        int c = w.FindCheckpt(level);
+        Assert.True(c >= 0);
+        return c;
+    }
+
+    [Fact]
+    public void LevelXKeepsFlashingAfterTheHeroTouchesIt()
+    {
+        var w = TestWorld.Load(1, "MAP");
+        var cp = w.Obj(FindX(w, 2));
+        Assert.True(FlashPixels(w, cp.X, cp.Y) > 0, "unvisited X uses the flashing frame");
+        w.Dispatch(Enumerable.Range(0, w.Objects.Count).First(i => w.Obj(i).Kind == ObjectKind.Map && w.Obj(i).State == -1
+            && w.Obj(i).X == cp.X && w.Obj(i).Y == cp.Y), Msg.Touch, 0);
+        Assert.True(FlashPixels(w, cp.X, cp.Y) > 0, "touching must not switch it to the static frame");
+    }
+
+    [Fact]
+    public void LevelXStopsFlashingOnceItsLevelIsCompleted()
+    {
+        var w = TestWorld.Load(1, "MAP");
+        var cp = w.Obj(FindX(w, 2));
+        int x = cp.X, y = cp.Y;
+       
+        w.KillObj(FindX(w, 2));
+        Assert.Equal(0, FlashPixels(w, x, y));
+    }
+}

@@ -543,6 +543,17 @@ public sealed partial class Behaviors
         return 0;
     }
 
+    /// <summary>A map X is done once its level's checkpoint is gone (completing a level kills the checkpoint).</summary>
+    private bool LevelEntryDone(Obj x)
+    {
+        for (int i = 0; i < _w.Objects.Count; i++)
+        {
+            var o = _w.Obj(i);
+            if (o.Kind == ObjectKind.Checkpt && o.X == x.X && o.Y == x.Y) return false;
+        }
+        return true;
+    }
+
     /// <summary>msg_map (obj_map, kind 88): overworld map markers (level icons, the "you are here"
     /// X). State -1 is the small marker; 6..12 are the larger level badges.</summary>
     private int MapIcon(int n, int msg, int z)
@@ -564,11 +575,12 @@ public sealed partial class Behaviors
                 }
                 break;
             case Msg.Draw:
-                if (p.State == -1) _w.DrawSprite(sh2 + p.SubState, p.X + 2, p.Y + 2);
+                if (p.State == -1) _w.DrawSprite(sh2 + (LevelEntryDone(p) ? 1 : 0), p.X + 2, p.Y + 2);
                 else _w.DrawSprite(sh + p.State, p.X + p.Xd, p.Y + p.Yd);
                 break;
             case Msg.Touch:
-                if (z == 0 && p.SubState == 0) p.SubState = 1;
+                // Deliberate deviation: the original latched the X to its static frame on first touch; here it keeps
+                // flashing until the level is completed (see LevelEntryDone), so touching no longer changes it.
                 return 1;
         }
         return 0;
