@@ -94,6 +94,9 @@ if (args.Length > 0 && args[0] == "--objlist")
 if (args.Length > 0 && args[0] == "--findobj")
     return DebugDump.FindObj(args[1], int.Parse(args[2]), int.Parse(args[3]));
 
+if (args.Length > 0 && args[0] == "--makesave")
+    return XargonNET.Engine.DebugSave.MakeSave(int.Parse(args[1]), int.Parse(args[2]), args[3], int.Parse(args[4]));
+
 if (args.Length > 0 && args[0] == "--cells")
     return DebugDump.DumpCells(args[1], int.Parse(args[2]), int.Parse(args[3]), int.Parse(args[4]), int.Parse(args[5]));
 
