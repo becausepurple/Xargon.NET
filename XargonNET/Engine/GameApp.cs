@@ -316,6 +316,13 @@ public sealed class GameApp : IDisposable
                 _objects.UpdateObjects(_gameVp);
                 _objects.UpdBotMsg(); // upd_botmsg(): after upd_objs(1), before refresh
             }
+            // A "press ESC" request left by an object update: serviced before PostUpdate can swap the world.
+            if (_objects.TakeEscWait() is { } escContinue)
+            {
+                RunPressEsc();
+                if (_quit) return;
+                escContinue();
+            }
             // checkpoint state 4 sets gameover=2: polled BEFORE a death reload / level transition swaps the world.
             over = GameFlow.PostUpdate(_objects, died,
                 die: () => AdoptWorld(_session.Die()), // death -> reload level + restore snapshot (p_reenter(1))
@@ -640,6 +647,36 @@ public sealed class GameApp : IDisposable
         FadeOut();
         _screen.Clear(248);
         FadeIn();
+    }
+
+    /// <summary>
+    /// Blocks on the frame the object update left (no redraw: the palette stays as the object set it) until
+    /// Escape is pressed. Window close latches <c>_quit</c> and also ends the wait.
+    /// </summary>
+    private void RunPressEsc()
+    {
+        ResetInputAfterModal(); // C: key=0; fire1off=1; fire2off=1
+        bool done = false;
+        while (!done && !_quit)
+        {
+            while (SDL.PollEvent(out SDL.Event e))
+            {
+                if ((SDL.EventType)e.Type == SDL.EventType.Quit) _quit = true;
+                else if ((SDL.EventType)e.Type == SDL.EventType.KeyDown && !e.Key.Repeat && e.Key.Key == SDL.Keycode.Escape)
+                    done = true;
+            }
+            _presenter.Present(_screen);
+            SDL.Delay(14);
+        }
+        ResetInputAfterModal();
+    }
+
+    private void ResetInputAfterModal()
+    {
+        _keys.Clear();
+        _clock.Reset();
+        _controls.Fire1Off = 1;
+        _controls.Fire2Off = 1;
     }
 
     // ---- Drawing --------------------------------------------------------------------------

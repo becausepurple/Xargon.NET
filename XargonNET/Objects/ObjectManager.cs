@@ -49,6 +49,28 @@ public sealed class ObjectManager
     /// <summary>Frame counter (gamecount) — drives animations and colour cycling.</summary>
     public int Gamecount;
 
+    private Action? _escWait;
+
+    /// <summary>
+    /// Asks the play loop to show the current frame and wait for Escape, then run <paramref name="onContinue"/>
+    /// (the C's blocking <c>do { checkctrl0(1); } while (key != escape);</c> inside an object update).
+    /// Returns false and ignores the call if a request is already pending.
+    /// </summary>
+    public bool RequestEscWait(Action onContinue)
+    {
+        if (_escWait is not null) return false;
+        _escWait = onContinue;
+        return true;
+    }
+
+    /// <summary>Returns the pending press-ESC continuation once and clears it; null when none.</summary>
+    public Action? TakeEscWait()
+    {
+        var k = _escWait;
+        _escWait = null;
+        return k;
+    }
+
     /// <summary>Set by a checkpoint to request a board/level transition (newlevel).</summary>
     public string? NewLevel;
 
