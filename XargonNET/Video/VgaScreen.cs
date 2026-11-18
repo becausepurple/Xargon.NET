@@ -67,6 +67,20 @@ public sealed class VgaScreen
     public void SetColorFromDac(int c, int q) =>
         SetColor6(c, Dac[q * 3], Dac[q * 3 + 1], Dac[q * 3 + 2]);
 
+    /// <summary>graphics.c dim(): the C animates cycle 63,57,...,33; the port applies only the final
+    /// step (33) instantly. Overwrites all 256 live entries from the unmodified <see cref="Dac"/>.</summary>
+    public void Dim() => ScaleFromDac(33);
+
+    /// <summary>graphics.c undim(): the C animates cycle 32,38,...,62; the port applies only the final
+    /// step (62) instantly. Overwrites all 256 live entries from the unmodified <see cref="Dac"/>.</summary>
+    public void Undim() => ScaleFromDac(62);
+
+    private void ScaleFromDac(int cycle)
+    {
+        for (int i = 0; i < 256; i++)
+            SetColor6(i, (Dac[i * 3] * cycle) >> 6, (Dac[i * 3 + 1] * cycle) >> 6, (Dac[i * 3 + 2] * cycle) >> 6);
+    }
+
     /// <summary>Clear the whole framebuffer to a colour index (clrvp on mainvp).</summary>
     public void Clear(byte color) => Array.Fill(Pixels, color);
 
