@@ -322,6 +322,7 @@ public sealed class GameApp : IDisposable
                 RunPressEsc();
                 if (_quit) return;
                 escContinue();
+                pending.Clear(); // a modal ran: presses made inside it were consumed by it
             }
             // checkpoint state 4 sets gameover=2: polled BEFORE a death reload / level transition swaps the world.
             over = GameFlow.PostUpdate(_objects, died,
@@ -656,6 +657,9 @@ public sealed class GameApp : IDisposable
     private void RunPressEsc()
     {
         ResetInputAfterModal(); // C: key=0; fire1off=1; fire2off=1
+        // C key=0 also flushes pending keystrokes: drop stale queued events (an Esc that arrived before the wait began).
+        while (SDL.PollEvent(out SDL.Event stale))
+            if ((SDL.EventType)stale.Type == SDL.EventType.Quit) _quit = true;
         bool done = false;
         while (!done && !_quit)
         {
