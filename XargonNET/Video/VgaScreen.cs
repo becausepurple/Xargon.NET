@@ -75,6 +75,10 @@ public sealed class VgaScreen
     /// step (62) instantly. Overwrites all 256 live entries from the unmodified <see cref="Dac"/>.</summary>
     public void Undim() => ScaleFromDac(62);
 
+    /// <summary>Set every live entry back to the unmodified <see cref="Dac"/> (what LoadPalette6 produced), undoing
+    /// dim/undim (which scales by 33/64 and 62/64) and any per-entry overrides.</summary>
+    public void RestoreFromDac() => ScaleFromDac(64);
+
     private void ScaleFromDac(int cycle)
     {
         for (int i = 0; i < 256; i++)
