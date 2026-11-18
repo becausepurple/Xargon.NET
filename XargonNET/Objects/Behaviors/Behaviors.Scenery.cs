@@ -386,7 +386,7 @@ public sealed partial class Behaviors
     /// <summary>
     /// msg_front (obj_front, kind 72): front-layer decorations — pillars, weeds, signs, etc. Each
     /// state maps to a fixed shape (some in other tables). States 13/14 are the end-boss reactor
-    /// (its destruction sequence depends on boss damage and the end-game flow, not yet ported).
+    /// (destroyed at 40 hits, then the per-volume ending runs).
     /// </summary>
     private int Front(int n, int msg, int z)
     {
@@ -403,7 +403,7 @@ public sealed partial class Behaviors
                     int f = _w.AddObj(ObjectKind.Fire, p.X + _w.XrRandom(span), p.Y + _w.XrRandom(vspan), 0, 0);
                     _w.Obj(f).State = 1;
                 }
-                // BOSS: info1>=40 reactor destroyed: dim/undim flicker, explode1+fireexpl bursts, +20000 score, 60-frame countdown, then per-volume ending (counter 0/1/2: next board / gameover=2 / sendtrig+killobj). Also deliberately unwired here (endings plan): the C's Xargon end-of-volume message txt("BEWARE MALVINEOUS! XARGON IS VERY CLOSE!", 3, 0) (x_obj.c:2032) and txt("REACTOR DESTROYED! Press ESC to continue", 7, 0) (x_obj.c:2002)
+                if (p.Info1 >= 40) ReactorDestroyed(n, p);
                 return 0;
             case Msg.Draw:
                 switch (p.State)
@@ -446,6 +446,68 @@ public sealed partial class Behaviors
                 break;
         }
         return 0;
+    }
+
+    /// <summary>x_obj.c:1984-2034: the destroyed-reactor sequence (flicker, bursts, 60-frame countdown, per-volume ending).</summary>
+    private void ReactorDestroyed(int n, Obj p)
+    {
+        const int StStand = 0, StStill = 1, StBegin = 4; // player states (private in Player.cs)
+        var screen = _w.Screen;
+        int ext = p.State == 14 ? 20 : 0;
+        p.SubState = (p.SubState + 1) & 7;
+        if (p.SubState == 0) screen.Dim(); else screen.Undim();
+        if (p.Counter == 2) screen.SetColor6(250, 20, 20, 23);
+        _w.Explode1(p.X + _w.XrRandom(36 + ext), p.Y + _w.XrRandom(36 + ext), 1, 1);
+        _w.Explode1(p.X + _w.XrRandom(36 + ext), p.Y + _w.XrRandom(36 + ext), 1, 0);
+        _w.AddObj(ObjectKind.FireExpl, p.X + _w.XrRandom(44 + ext) - 15, p.Y + _w.XrRandom(44 + ext) - 15, 0, 0);
+        if (p.StateCount == 0)
+        {
+            _w.Obj(0).State = StStill;
+            // sound: snd_play (5,snd_enemykill1)
+            _w.AddScore(20000, p.X, p.Y);
+            _w.Pl.Health = 5; // statmodflg|=mod_screen: the port redraws the status bar every frame
+        }
+        if (p.StateCount == 58 && p.Counter != 2)
+        {
+            // sound: snd_play (4,snd_enemykill2)
+            _w.Txt("REACTOR DESTROYED! Press ESC to continue", 7, 0);
+        }
+        if (++p.StateCount < 60) return;
+        if (p.Counter == 0)
+        {
+            // End of volume one. sound: snd_play (5,snd_enemykill1)
+            _w.RequestEscWait(() =>
+            {
+                _w.DialogMsg(22, false);
+                _w.Pl.Level = 33;
+                int nl = _w.FindCheckpt(_w.Pl.Level);
+                var hero = _w.Obj(0);
+                hero.X = _w.Obj(nl).X;
+                hero.Y = _w.Obj(nl).Y - 24;
+                hero.State = StBegin;
+                hero.StateCount = 0;
+                _w.NewLevel = "board_33";
+            });
+        }
+        else if (p.Counter == 1)
+        {
+            // End of volume two. sound: snd_play (5,snd_enemykill1)
+            _w.RequestEscWait(() => _w.GameWon = true);
+        }
+        else
+        {
+            // End of volume three.
+            screen.Undim();
+            screen.SetColor6(250, 20, 20, 23);
+            screen.SetColor6(162, 23, 13, 33); screen.SetColor6(163, 29, 19, 39);
+            screen.SetColor6(164, 35, 25, 45); screen.SetColor6(165, 42, 32, 51);
+            screen.SetColor6(166, 49, 40, 57); screen.SetColor6(167, 57, 50, 63);
+            _w.SendTrig(p.Counter, Msg.Trigger, n);
+            // sound: snd_play (5,snd_enemykill1)
+            _w.KillObj(n);
+            _w.Obj(0).State = StStand;
+            _w.Txt("BEWARE MALVINEOUS! XARGON IS VERY CLOSE!", 3, 0);
+        }
     }
 
     /// <summary>msg_fire (obj_fire, kind 47): a short-lived flame that burns the player on contact.</summary>

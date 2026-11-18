@@ -54,6 +54,7 @@ public sealed partial class Behaviors
         _w.Register(ObjectKind.Hopper, Hopper);
         _w.Register(ObjectKind.Bee, Bee);
         _w.Register(ObjectKind.Skull, Skull);
+        _w.Register(ObjectKind.Xargon, Xargon);
         _w.Register(ObjectKind.Transport, Transport);
         _w.Register(ObjectKind.TransPad, Transpad);
         _w.Register(ObjectKind.Front, Front);

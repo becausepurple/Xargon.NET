@@ -94,8 +94,11 @@ public sealed class LevelSession
         var om = new ObjectManager(b, _shapes, _info, _screen, _pl, _episode)
         { Text = _text, Popups = Popups, Hints = Hints, IsolateHandlerFaults = isolate || IsolateHandlerFaults };
         _ = new Behaviors(om);
-        if (deferPalette) _pendingPalette = () => Effects.ApplyForBoard(_screen, b);
-        else { _pendingPalette = null; Effects.ApplyForBoard(_screen, b); }
+        // A new board starts from the full source palette: a dim/undim at the end of the previous board (reactor/boss
+        // sequences) scales all 256 live entries and must not carry over. Then the board's own sky is applied.
+        void Apply() { _screen.RestoreFromDac(); Effects.ApplyForBoard(_screen, b); }
+        if (deferPalette) _pendingPalette = Apply;
+        else { _pendingPalette = null; Apply(); }
         return om;
     }
 
